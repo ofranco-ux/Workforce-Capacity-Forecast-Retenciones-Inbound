@@ -18,20 +18,22 @@ app = Flask(__name__)
 CORS(app)
 
 VENTANAS_SERVICIO = {
-    'experiencias liverpool': {'inicio': 9 * 60, 'fin': 21 * 60},
-    'experiencias suburbia': {'inicio': 9 * 60, 'fin': 21 * 60},
-    'retenciones liverpool': {'inicio': 9 * 60, 'fin': 21 * 60},
-    'retenciones suburbia': {'inicio': 9 * 60, 'fin': 21 * 60},
     'ambulancia servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'asignación hogar': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'asignacion hogar': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'asignación vial': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'asignacion vial': {'inicio': 0 * 60, 'fin': 24 * 60},
     'coppel servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
     'liverpool servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
     'multicampañas': {'inicio': 0 * 60, 'fin': 24 * 60},
-    'seg y asig hogar': {'inicio': 0 * 60, 'fin': 24 * 60},
-    'seg y asig vial': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'multicampanas': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'seguimiento hogar': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'seguimiento vial': {'inicio': 0 * 60, 'fin': 24 * 60},
     'suburbia servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
-    'hexalud': {'inicio': 0 * 60, 'fin': 24 * 60},
-    'liverpool mascotas': {'inicio': 0 * 60, 'fin': 24 * 60},
-    'suburbia mascotas': {'inicio': 0 * 60, 'fin': 24 * 60}
+    'experiencias liverpool': {'inicio': 9 * 60, 'fin': 21 * 60},
+    'experiencias suburbia': {'inicio': 9 * 60, 'fin': 21 * 60},
+    'retenciones suburbia': {'inicio': 9 * 60, 'fin': 20 * 60},
+    'retenciones liverpool': {'inicio': 9 * 60, 'fin': 20 * 60}
 }
 
 @app.route('/')
@@ -120,8 +122,14 @@ def format_aht_str(seconds):
     s = secs % 60
     return f"{hrs:02d}:{mins:02d}:{s:02d}"
 
+ERLANG_CACHE = {}
+
 def erlang_c_sl_optimizado(A, N, AHT, target_time):
     if N <= A or A <= 0 or N <= 0: return 0.0
+    key = (round(A, 2), N, round(AHT, 1), target_time)
+    if key in ERLANG_CACHE:
+        return ERLANG_CACHE[key]
+        
     try:
         sum_terms, current_term = 1.0, 1.0
         int_N = min(int(N), 1000)
@@ -132,7 +140,9 @@ def erlang_c_sl_optimizado(A, N, AHT, target_time):
         pw = last_term / (sum_terms + last_term)
         intensity = N - A
         sl = 1.0 - (pw * math.exp(-intensity * (target_time / AHT)))
-        return round(max(0.0, min(100.0, sl * 100.0)), 1)
+        resultado = round(max(0.0, min(100.0, sl * 100.0)), 1)
+        ERLANG_CACHE[key] = resultado
+        return resultado
     except: return 0.0
 
 def calcular_agentes_requeridos_erlang_c(A, aht, target_time, target_sl):
@@ -235,23 +245,8 @@ def holt_winters_fit_predict(series, season_len=7, alpha=0.2, beta=0.1, gamma=0.
     return preds
 
 def grid_search_auto_hw(series, n_preds=30):
-    if len(series) < 21:
-        return holt_winters_fit_predict(series, n_preds=n_preds)
-    train = np.array(series[:-14])
-    val_true = np.array(series[-14:])
-    best_wmape = float('inf')
-    best_params = (0.2, 0.05, 0.2)
-    sum_true = np.sum(val_true) if np.sum(val_true) > 0 else 1.0
-    for a in [0.1, 0.2, 0.3]:
-        for b in [0.01, 0.05, 0.1]:
-            for g in [0.1, 0.2, 0.3, 0.5]:
-                p_val = np.array(holt_winters_fit_predict(train, season_len=7, alpha=a, beta=b, gamma=g, n_preds=14))
-                wmape = (np.sum(np.abs(val_true - p_val)) / sum_true) * 100
-                if wmape < best_wmape:
-                    best_wmape = wmape
-                    best_params = (a, b, g)
-    a_opt, b_opt, g_opt = best_params
-    return holt_winters_fit_predict(series, season_len=7, alpha=a_opt, beta=b_opt, gamma=g_opt, n_preds=n_preds)
+    # OPTIMIZACIÓN DE VELOCIDAD: Se salta la búsqueda de grid para evitar Timeouts en Render
+    return holt_winters_fit_predict(series, season_len=7, alpha=0.2, beta=0.1, gamma=0.3, n_preds=n_preds)
 
 def limpiar_outliers_iqr(series_list):
     if len(series_list) < 14:
@@ -502,7 +497,7 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
         with open(CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(data_processed, f)
     except Exception as err:
-        print("Error guardando cache:", err)
+        pass
 
     return data_processed
 
@@ -596,9 +591,6 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
             if j + SHIFT_BLOCKS <= m:
                 valid_starts.append(j)
 
-    # ==========================================
-    # CÁLCULO DE SERVICE LEVEL EN TIEMPO REAL
-    # ==========================================
     def calc_current_global_sl(current_cob):
         if tot_llamadas <= 0: return 100.0
         sl_acum = 0.0
@@ -617,7 +609,6 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
         while iteration < max_iterations:
             iteration += 1
             
-            # NUEVO: SE DETIENE EXACTAMENTE AL LLEGAR AL TARGET PARA AHORRAR NÓMINA
             if calc_current_global_sl(cob_hc) >= target_sl_dinamico:
                 break
 
@@ -713,7 +704,7 @@ def get_latest_forecast():
                 data = json.load(f)
             return jsonify(data), 200
         except Exception as e:
-            print(f"Error leyendo cache, se regenerará: {e}")
+            pass
             
     if os.path.exists(EXCEL_DEFAULT):
         try:
@@ -756,11 +747,9 @@ def api_optimize_schedules():
             'req_hc_pooled': [int(x) for x in req_hc_pooled]
         }), 200
     except Exception as e:
-        print("Error en backend optimizador:", str(e))
         return jsonify({'error': f'Error optimizando turnos: {str(e)}'}), 500
 
 @app.route('/api/process', methods=['POST', 'GET'])
-@app.route('/api/process/', methods=['POST', 'GET'])
 def process_data():
     if request.method == 'GET':
         return jsonify({'status': 'API predictiva activa'}), 200
@@ -783,7 +772,7 @@ def process_data():
         return jsonify(data_processed)
     except Exception as e:
         gc.collect()
-        return jsonify({'error': f"Error: {str(e)}"}), 500
+        return jsonify({'error': f"Error en procesamiento de datos: {str(e)}"}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
