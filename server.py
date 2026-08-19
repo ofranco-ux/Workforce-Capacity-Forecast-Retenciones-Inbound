@@ -17,9 +17,6 @@ EXCEL_DEFAULT = os.path.join(BASE_DIR, 'historico.xlsx')
 app = Flask(__name__)
 CORS(app)
 
-# ==========================================
-# NUEVAS VENTANAS DE SERVICIO ACTUALIZADAS
-# ==========================================
 VENTANAS_SERVICIO = {
     'experiencias liverpool': {'inicio': 9 * 60, 'fin': 21 * 60},
     'experiencias suburbia': {'inicio': 9 * 60, 'fin': 21 * 60},
@@ -163,9 +160,6 @@ def parse_time_str(t_str):
         return hh * 60 + mm
     except: return None
 
-# ==========================================
-# LÓGICA DE VALIDACIÓN ACTUALIZADA
-# ==========================================
 def esta_en_ventana_servicio(campana, intervalo_str):
     camp_key = str(campana).strip().lower()
     minutos_inter = parse_time_str(intervalo_str)
@@ -173,12 +167,10 @@ def esta_en_ventana_servicio(campana, intervalo_str):
     if minutos_inter is None: 
         return True
         
-    # Busca la configuración exacta en el diccionario
     if camp_key in VENTANAS_SERVICIO:
         ventana = VENTANAS_SERVICIO[camp_key]
         return ventana['inicio'] <= minutos_inter < ventana['fin']
         
-    # Si suben una campaña nueva que no está en el diccionario, asume 24 horas por defecto
     return True
 
 def encontrar_columna(df, posibles_nombres):
@@ -584,8 +576,17 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
     duracion_minutos = int(round(duracion_jornada * 60))
     label_jornada_diurna = f"{duracion_jornada:.1f} hrs".replace('.0', '')
 
-    min_diurno_inicio = 7 * 60    
-    min_diurno_limite = 22 * 60   
+    # --- LÓGICA DINÁMICA DE VENTANA DE SERVICIO ---
+    min_in_array = [parse_time_str(x) for x in intervalos if parse_time_str(x) is not None]
+    if len(min_in_array) > 0:
+        min_diurno_inicio = min(min_in_array)
+        # El límite absoluto es el último intervalo + 30 mins
+        min_diurno_limite = max(min_in_array) + 30
+    else:
+        min_diurno_inicio = 7 * 60    
+        min_diurno_limite = 22 * 60   
+    
+    # La hora máxima de ENTRADA es la hora de salida (límite) menos lo que dura el turno
     min_entrada_maxima = min_diurno_limite - duracion_minutos
 
     valid_starts = []
