@@ -64,10 +64,6 @@
         ::-webkit-scrollbar-track { background: #070A11; }
         ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 99px; }
         ::-webkit-scrollbar-thumb:hover { background: #06B6D4; }
-        
-        .glow-cyan {
-            box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.4);
-        }
     </style>
 </head>
 <body class="p-6 md:p-8 min-h-screen">
@@ -110,25 +106,21 @@
     </header>
 
     <div class="grid grid-cols-12 gap-8">
-
         <aside id="panelControl" class="col-span-12 lg:col-span-3 glass-panel p-6 rounded-2xl space-y-6 h-fit relative">
             <div class="flex items-center justify-between pb-4 border-b border-slate-800/80">
                 <h2 class="text-xs font-black text-slate-200 uppercase tracking-widest flex items-center gap-2">
                     <span class="text-cyan-400">⚡</span> Parámetros de Control
                 </h2>
-                <span class="text-[10px] text-slate-500 font-mono">SETTINGS</span>
             </div>
             
             <div>
-                <label class="block text-xs font-bold text-slate-300 mb-2">Cargar Master Excel (<span class="text-emerald-400 font-mono">historico.xlsx</span>)</label>
+                <label class="block text-xs font-bold text-slate-300 mb-2">Cargar Master Excel</label>
                 <div class="relative">
                     <input type="file" id="fileInput" accept=".xlsx, .xls" class="block w-full text-xs text-slate-400 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 border border-slate-800 rounded-xl cursor-pointer bg-slate-900/60 p-1.5 transition-all"/>
                 </div>
             </div>
 
             <div class="space-y-4 pt-2">
-                <p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Restricciones SLA & Malla</p>
-                
                 <div class="grid grid-cols-2 gap-3">
                     <div class="bg-brand-surface/60 p-3 rounded-xl border border-slate-800/80 focus-within:border-cyan-500/50 transition-colors">
                         <label class="block text-[10px] text-slate-400 font-medium mb-1">Target SL (%)</label>
@@ -159,7 +151,6 @@
                 <div class="bg-brand-surface/60 p-3 rounded-xl border border-violet-500/40 flex items-center justify-between">
                     <div>
                         <label for="chkNocturno" class="text-[11px] text-violet-300 font-bold block">🌙 Turno Nocturno (5x2)</label>
-                        <span class="text-[9px] text-slate-400 block">Jornada 22:00 a 07:00 (2 días descanso)</span>
                     </div>
                     <input type="checkbox" id="chkNocturno" onchange="debouncedActualizarGrafica()" class="w-4 h-4 rounded bg-slate-900 border-violet-500 text-violet-500 focus:ring-0 cursor-pointer">
                 </div>
@@ -167,7 +158,6 @@
                 <div class="bg-brand-surface/60 p-3 rounded-xl border border-rose-500/40 flex items-center justify-between mt-3">
                     <div>
                         <label for="chkPicos" class="text-[11px] text-rose-400 font-bold block">🔥 Staffing por Picos</label>
-                        <span class="text-[9px] text-slate-400 block">Calcula HC para el peor escenario (Max)</span>
                     </div>
                     <input type="checkbox" id="chkPicos" onchange="debouncedActualizarGrafica()" class="w-4 h-4 rounded bg-slate-900 border-rose-500 text-rose-500 focus:ring-0 cursor-pointer">
                 </div>
@@ -179,59 +169,47 @@
         </aside>
 
         <main id="dashboardMain" class="col-span-12 lg:col-span-9 space-y-6">
-
             <div class="glass-panel p-4 rounded-2xl flex justify-between items-center border border-slate-800/80 flex-wrap gap-4 relative z-50 overflow-visible">
                 <div class="flex items-center gap-3">
                     <div class="p-2.5 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-xl text-sm">🎯</div>
                     <div>
-                        <p class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Filtros Operativos Intradía (Multiselección)</p>
-                        <p id="tableSelectionLabel" class="text-xs text-slate-200 font-medium">Selecciona una o más campañas, meses, fechas e intervalos</p>
+                        <p class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Filtros Operativos Intradía</p>
                     </div>
                 </div>
                 
                 <div class="flex items-center gap-3 flex-wrap">
-                    <button id="btnResetTableFilter" onclick="resetAllFilters()" class="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold py-2 px-3 rounded-xl transition duration-200 font-mono">
-                        🔄 Resetear
-                    </button>
+                    <button onclick="resetAllFilters()" class="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold py-2 px-3 rounded-xl transition duration-200 font-mono">🔄 Resetear</button>
 
                     <div class="flex flex-col relative">
                         <label class="text-[9px] text-slate-400 font-bold uppercase mb-1">Mes(es)</label>
                         <button id="btnDropdownMes" onclick="toggleDropdown('Mes')" class="bg-brand-surface border border-amber-500/30 text-xs rounded-xl px-3 py-2 text-amber-300 font-mono-num font-bold focus:outline-none transition-all shadow-inner min-w-[140px] h-[36px] flex items-center justify-between gap-2">
-                            <span id="mesSelectedText">🗓️ MES (0)</span>
-                            <span class="text-[10px] text-amber-400">▼</span>
+                            <span id="mesSelectedText">🗓️ MES (0)</span><span class="text-[10px] text-amber-400">▼</span>
                         </button>
-                        <div id="dropdownMesMenu" class="hidden absolute top-full left-0 mt-2 w-56 max-h-60 bg-[#0D1322] border border-amber-500/40 rounded-xl shadow-2xl overflow-y-auto z-[999] p-2 space-y-1 font-mono-num text-xs text-slate-200">
-                        </div>
+                        <div id="dropdownMesMenu" class="hidden absolute top-full left-0 mt-2 w-56 max-h-60 bg-[#0D1322] border border-amber-500/40 rounded-xl shadow-2xl overflow-y-auto z-[999] p-2 space-y-1 font-mono-num text-xs text-slate-200"></div>
                     </div>
 
                     <div class="flex flex-col relative">
                         <label class="text-[9px] text-slate-400 font-bold uppercase mb-1">Campaña(s)</label>
                         <button id="btnDropdownCampana" onclick="toggleDropdown('Campana')" class="bg-brand-surface border border-violet-500/30 text-xs rounded-xl px-3 py-2 text-violet-300 font-mono-num font-bold focus:outline-none transition-all shadow-inner min-w-[150px] h-[36px] flex items-center justify-between gap-2">
-                            <span id="campanaSelectedText">🎧 SELECC. (0)</span>
-                            <span class="text-[10px] text-violet-400">▼</span>
+                            <span id="campanaSelectedText">🎧 SELECC. (0)</span><span class="text-[10px] text-violet-400">▼</span>
                         </button>
-                        <div id="dropdownCampanaMenu" class="hidden absolute top-full left-0 mt-2 w-64 max-h-60 bg-[#0D1322] border border-violet-500/40 rounded-xl shadow-2xl overflow-y-auto z-[999] p-2 space-y-1 font-mono-num text-xs text-slate-200">
-                        </div>
+                        <div id="dropdownCampanaMenu" class="hidden absolute top-full left-0 mt-2 w-64 max-h-60 bg-[#0D1322] border border-violet-500/40 rounded-xl shadow-2xl overflow-y-auto z-[999] p-2 space-y-1 font-mono-num text-xs text-slate-200"></div>
                     </div>
 
                     <div id="containerFiltroFecha" class="flex flex-col relative">
                         <label class="text-[9px] text-slate-400 font-bold uppercase mb-1">Fecha(s)</label>
                         <button id="btnDropdownFecha" onclick="toggleDropdown('Fecha')" class="bg-brand-surface border border-cyan-500/30 text-xs rounded-xl px-3 py-2 text-cyan-300 font-mono-num font-bold focus:outline-none transition-all shadow-inner min-w-[150px] h-[36px] flex items-center justify-between gap-2">
-                            <span id="fechaSelectedText">📅 SELECC. (0)</span>
-                            <span class="text-[10px] text-cyan-400">▼</span>
+                            <span id="fechaSelectedText">📅 SELECC. (0)</span><span class="text-[10px] text-cyan-400">▼</span>
                         </button>
-                        <div id="dropdownFechaMenu" class="hidden absolute top-full left-0 mt-2 w-64 max-h-60 bg-[#0D1322] border border-cyan-500/40 rounded-xl shadow-2xl overflow-y-auto z-[999] p-2 space-y-1 font-mono-num text-xs text-slate-200">
-                        </div>
+                        <div id="dropdownFechaMenu" class="hidden absolute top-full left-0 mt-2 w-64 max-h-60 bg-[#0D1322] border border-cyan-500/40 rounded-xl shadow-2xl overflow-y-auto z-[999] p-2 space-y-1 font-mono-num text-xs text-slate-200"></div>
                     </div>
 
                     <div class="flex flex-col relative">
                         <label class="text-[9px] text-slate-400 font-bold uppercase mb-1">Intervalo(s)</label>
                         <button id="btnDropdownIntervalo" onclick="toggleDropdown('Intervalo')" class="bg-brand-surface border border-emerald-500/30 text-xs rounded-xl px-3 py-2 text-emerald-300 font-mono-num font-bold focus:outline-none transition-all shadow-inner min-w-[150px] h-[36px] flex items-center justify-between gap-2">
-                            <span id="intervaloSelectedText">⏰ SELECC. (0)</span>
-                            <span class="text-[10px] text-emerald-400">▼</span>
+                            <span id="intervaloSelectedText">⏰ SELECC. (0)</span><span class="text-[10px] text-emerald-400">▼</span>
                         </button>
-                        <div id="dropdownIntervaloMenu" class="hidden absolute top-full left-0 mt-2 w-64 max-h-60 bg-[#0D1322] border border-emerald-500/40 rounded-xl shadow-2xl overflow-y-auto z-[999] p-2 space-y-1 font-mono-num text-xs text-slate-200">
-                        </div>
+                        <div id="dropdownIntervaloMenu" class="hidden absolute top-full left-0 mt-2 w-64 max-h-60 bg-[#0D1322] border border-emerald-500/40 rounded-xl shadow-2xl overflow-y-auto z-[999] p-2 space-y-1 font-mono-num text-xs text-slate-200"></div>
                     </div>
                 </div>
             </div>
@@ -251,7 +229,6 @@
                 <div class="glass-panel glass-panel-hover p-4 rounded-2xl border-l-4 border-l-violet-500 relative overflow-hidden">
                     <div class="flex justify-between items-center">
                         <p id="kpiHcRequeridoTitle" class="text-[10px] uppercase tracking-widest text-slate-400 font-black">HC REQUERIDO TOTAL</p>
-                        <span class="text-xs text-violet-400">📊</span>
                     </div>
                     <p id="kpiHcRequerido" class="text-2xl font-black font-mono-num mt-2 text-violet-300">0 HC</p>
                     <p id="kpiHcRequeridoSub" class="text-[10px] text-slate-500 mt-1">Plantilla sugerida para la demanda</p>
@@ -260,7 +237,6 @@
                 <div class="glass-panel glass-panel-hover p-4 rounded-2xl border-l-4 border-l-emerald-500 relative overflow-hidden">
                     <div class="flex justify-between items-center">
                         <p id="kpiHcRosterTitle" class="text-[10px] uppercase tracking-widest text-slate-400 font-black">PLANTILLA TOTAL ACTUAL</p>
-                        <span class="text-xs text-emerald-400">👥</span>
                     </div>
                     <div class="flex items-end gap-3 mt-2">
                         <p id="kpiHcRoster" class="text-2xl font-black font-mono-num text-emerald-300">0 HC</p>
@@ -275,10 +251,8 @@
                 <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
                     <div>
                         <div class="flex items-center gap-2">
-                            <span class="text-amber-400 text-base">🧠</span>
                             <h3 id="optModuleTitle" class="text-xs font-black text-slate-200 uppercase tracking-widest">Optimización de Horarios (Sugerencia)</h3>
                         </div>
-                        <p id="subtHeadcountMod" class="text-xs text-slate-400 font-medium mt-0.5">Malla de turnos requerida para cubrir la curva de demanda</p>
                     </div>
                     <button onclick="exportarTurnosCSV()" class="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold py-2 px-4 rounded-xl transition duration-200 flex items-center gap-2 font-mono">
                         <span>📥</span> Exportar Malla Sugerida
@@ -295,7 +269,6 @@
                     </div>
 
                     <div class="bg-brand-surface/80 p-4 rounded-xl border border-violet-500/30 shadow-[0_0_15px_rgba(139,92,246,0.1)] relative overflow-hidden flex flex-col justify-between">
-                        <div class="absolute -right-4 -top-4 w-16 h-16 bg-violet-500/20 rounded-full blur-xl pointer-events-none"></div>
                         <p id="lblHeadcountType" class="text-[10px] uppercase tracking-widest text-violet-400 font-bold relative z-10 leading-tight">HC Requerido A Contratar</p>
                         <div class="my-2 relative z-10">
                             <p id="optHeadcount" class="text-3xl font-black font-mono-num text-white truncate">--</p>
@@ -407,7 +380,7 @@
                     if(config.chkPicos !== undefined) document.getElementById('chkPicos').checked = config.chkPicos;
                 }
             } catch (e) {
-                console.log("No hay config WFM previa.");
+                console.log("No hay config WFM previa, usando valores default.");
             }
         }
 
@@ -449,7 +422,7 @@
         }
 
         // ==========================================
-        // ERLANG C MATEMÁTICA PURA (FRONTEND)
+        // FUNCIONES MATEMÁTICAS ERLANG C DINÁMICO
         // ==========================================
         function erlang_c_sl_optimizado(A, N, AHT, target_time) {
             if (N <= A || A <= 0 || N <= 0) return 0.0;
@@ -467,19 +440,6 @@
             return Math.max(0.0, Math.min(100.0, sl * 100.0));
         }
 
-        function maxCallsForAgents(agentsNetos, aht, targetTime, targetSl) {
-            if (agentsNetos <= 0 || aht <= 0) return 0;
-            let low = 0; let high = agentsNetos * (1800 / aht); let maxCalls = 0;
-            for (let i=0; i<20; i++) { 
-                let mid = (low + high) / 2;
-                let a_erl = (mid * aht) / 1800;
-                let sl = erlang_c_sl_optimizado(a_erl, agentsNetos, aht, targetTime);
-                if (sl >= targetSl) { maxCalls = mid; low = mid; } else { high = mid; }
-            }
-            return Math.floor(maxCalls);
-        }
-
-        // NUEVA FUNCIÓN QUE EVITA QUE SE CAIGA EL SERVICE LEVEL
         function calcularAgentesRequeridosErlangC(llamadas, aht, targetTime, targetSl, mermaDecimal) {
             if (llamadas <= 0 || aht <= 0) return 0;
             let a_erl = (llamadas * aht) / 1800.0;
@@ -493,6 +453,18 @@
                 n++;
             }
             return Math.ceil(n / factor);
+        }
+
+        function maxCallsForAgents(agentsNetos, aht, targetTime, targetSl) {
+            if (agentsNetos <= 0 || aht <= 0) return 0;
+            let low = 0; let high = agentsNetos * (1800 / aht); let maxCalls = 0;
+            for (let i=0; i<20; i++) { 
+                let mid = (low + high) / 2;
+                let a_erl = (mid * aht) / 1800;
+                let sl = erlang_c_sl_optimizado(a_erl, agentsNetos, aht, targetTime);
+                if (sl >= targetSl) { maxCalls = mid; low = mid; } else { high = mid; }
+            }
+            return Math.floor(maxCalls);
         }
 
         function debouncedActualizarGrafica() {
@@ -708,14 +680,13 @@
             const activeCampaigns = [...new Set(dfFiltered.map(r => getProp(r, ['Campaña', 'Campana'], 'General')))];
             
             const esVistaSemanal = fechasFiltradas.length > 1;
-            const diasTotalesGlobales = fechasFiltradas.length > 0 ? fechasFiltradas.length : 1;
 
             const llamadasAvgVector = todosIntervalos.map(() => 0);
             const ahtAvgVector = todosIntervalos.map(() => 0);
             const rosterAvgVector = todosIntervalos.map(() => 0); 
             const reqAvgVector = todosIntervalos.map(() => 0); 
 
-            // LÓGICA DE ERLANG C POR CAMPAÑA PARA QUE EL SL NO SE HUNDA AL FILTRAR
+            // LÓGICA ERLANG DINÁMICA POR CAMPAÑA PARA EVITAR EL COLAPSO DEL SERVICE LEVEL
             todosIntervalos.forEach((inter, idx) => {
                 let sumLlamadasGlobal = 0, sumHTGlobal = 0, sumReqGlobal = 0, sumRosterGlobal = 0;
                 
@@ -723,7 +694,7 @@
                     const campRows = dfFiltered.filter(r => getProp(r, ['Campaña', 'Campana'], 'General') === camp && getProp(r, ['Intervalo'], '00:00') === inter);
                     if(campRows.length === 0) return;
                     
-                    let campSumCalls = 0, campSumHT = 0, campSumRoster = 0, campDiasActivos = 0, campMaxCalls = 0;
+                    let campSumCalls = 0, campSumHT = 0, campSumRoster = 0, campMaxCalls = 0;
                     
                     fechasFiltradas.forEach(dStr => {
                         const row = campRows.find(r => String(getProp(r, ['Fecha'], '')).split(' ')[0].split('T')[0] === dStr);
@@ -733,22 +704,27 @@
                             const rost = Number(getProp(row, ['HC_Actual_Roster'], 0)) || 0;
                             
                             campSumCalls += c; campSumHT += (c * aht); campSumRoster += rost;
-                            if(c > 0) campDiasActivos++;
                             if(c > campMaxCalls) campMaxCalls = c;
                         }
                     });
                     
-                    const divCalls = campDiasActivos > 0 ? campDiasActivos : 1;
-                    const avgCallsCamp = campSumCalls / divCalls;
+                    const diasTotales = fechasFiltradas.length > 0 ? fechasFiltradas.length : 1;
+                    const avgCallsCamp = campSumCalls / diasTotales;
                     const avgAhtCamp = campSumCalls > 0 ? campSumHT / campSumCalls : 180;
                     
                     const reqCampAvg = calcularAgentesRequeridosErlangC(avgCallsCamp, avgAhtCamp, targetTimeObj, targetSlObj, mermaDecimal);
                     const reqCampMax = calcularAgentesRequeridosErlangC(campMaxCalls, avgAhtCamp, targetTimeObj, targetSlObj, mermaDecimal);
                     
-                    if (usarPicos) { sumLlamadasGlobal += campMaxCalls; sumReqGlobal += reqCampMax; } 
-                    else { sumLlamadasGlobal += avgCallsCamp; sumReqGlobal += reqCampAvg; }
+                    if (usarPicos) { 
+                        sumLlamadasGlobal += campMaxCalls; 
+                        sumReqGlobal += reqCampMax; 
+                    } else { 
+                        sumLlamadasGlobal += avgCallsCamp; 
+                        sumReqGlobal += reqCampAvg; 
+                    }
                     
-                    sumHTGlobal += campSumHT; sumRosterGlobal += (campSumRoster / diasTotalesGlobales);
+                    sumHTGlobal += (usarPicos ? (campMaxCalls * avgAhtCamp) : (avgCallsCamp * avgAhtCamp));
+                    sumRosterGlobal += (campSumRoster / diasTotales);
                 });
                 
                 llamadasAvgVector[idx] = sumLlamadasGlobal;
@@ -762,7 +738,9 @@
 
             try {
                 ejecutarOptimizadorHorarios(todosIntervalos, llamadasAvgVector, ahtAvgVector, rosterAvgVector, reqAvgVector, targetTimeObj, targetSlObj, mermaVal, durJornada, usarNocturno, esVistaSemanal, dfFiltered);
-            } catch (e) { }
+            } catch (e) {
+                console.log("Error al preparar optimizador:", e);
+            }
         }
 
         async function ejecutarOptimizadorHorarios(intervalos, llamadasArr, ahtSegsArr, rosterAvgVector, reqAvgVector, targetTimeObj, targetSlObj, mermaVal, durJornada, usarNocturno, esVistaSemanal, dfFiltered) {
