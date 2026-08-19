@@ -11,17 +11,30 @@ import numpy as np
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_FILE = os.path.join(BASE_DIR, 'forecast_cache.json')
-CONFIG_FILE = os.path.join(BASE_DIR, 'wfm_config.json') # NUEVO ARCHIVO DE CONFIGURACION
+CONFIG_FILE = os.path.join(BASE_DIR, 'wfm_config.json') 
 EXCEL_DEFAULT = os.path.join(BASE_DIR, 'historico.xlsx')
 
 app = Flask(__name__)
 CORS(app)
 
+# ==========================================
+# NUEVAS VENTANAS DE SERVICIO ACTUALIZADAS
+# ==========================================
 VENTANAS_SERVICIO = {
-    'Retenciones Liverpool': {'inicio': 9 * 60, 'fin': 20 * 60},
-    'Retenciones Suburbia': {'inicio': 9 * 60, 'fin': 20 * 60},
-    'Experiencias Liverpool': {'inicio': 9 * 60, 'fin': 21 * 60},
-    'Experiencias Suburbia': {'inicio': 9 * 60, 'fin': 21 * 60}
+    'experiencias liverpool': {'inicio': 9 * 60, 'fin': 21 * 60},
+    'experiencias suburbia': {'inicio': 9 * 60, 'fin': 21 * 60},
+    'retenciones liverpool': {'inicio': 9 * 60, 'fin': 21 * 60},
+    'retenciones suburbia': {'inicio': 9 * 60, 'fin': 21 * 60},
+    'ambulancia servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'coppel servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'liverpool servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'multicampañas': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'seg y asig hogar': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'seg y asig vial': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'suburbia servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'hexalud': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'liverpool mascotas': {'inicio': 0 * 60, 'fin': 24 * 60},
+    'suburbia mascotas': {'inicio': 0 * 60, 'fin': 24 * 60}
 }
 
 @app.route('/')
@@ -42,16 +55,10 @@ def serve_index():
 def favicon():
     return '', 204
 
-# ==========================================
-# RUTA PARA MOSTRAR EL LOGO
-# ==========================================
 @app.route('/logo.png')
 def serve_logo():
     return send_from_directory(BASE_DIR, 'logo.png')
 
-# ==========================================
-# NUEVO ENDPOINT PARA SINCRONIZAR PARÁMETROS
-# ==========================================
 @app.route('/api/config', methods=['GET', 'POST'])
 def manage_config():
     if request.method == 'POST':
@@ -69,7 +76,6 @@ def manage_config():
                     return jsonify(json.load(f)), 200
             except:
                 pass
-        # Valores por defecto si no hay configuración guardada
         return jsonify({
             'targetSl': 80,
             'targetTime': 20,
@@ -157,12 +163,22 @@ def parse_time_str(t_str):
         return hh * 60 + mm
     except: return None
 
+# ==========================================
+# LÓGICA DE VALIDACIÓN ACTUALIZADA
+# ==========================================
 def esta_en_ventana_servicio(campana, intervalo_str):
     camp_key = str(campana).strip().lower()
     minutos_inter = parse_time_str(intervalo_str)
-    if minutos_inter is None: return True
-    if 'liverpool' in camp_key or 'suburbia' in camp_key:
-        return (9 * 60) <= minutos_inter < (21 * 60)
+    
+    if minutos_inter is None: 
+        return True
+        
+    # Busca la configuración exacta en el diccionario
+    if camp_key in VENTANAS_SERVICIO:
+        ventana = VENTANAS_SERVICIO[camp_key]
+        return ventana['inicio'] <= minutos_inter < ventana['fin']
+        
+    # Si suben una campaña nueva que no está en el diccionario, asume 24 horas por defecto
     return True
 
 def encontrar_columna(df, posibles_nombres):
