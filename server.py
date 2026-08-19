@@ -167,10 +167,11 @@ def esta_en_ventana_servicio(campana, intervalo_str):
     if minutos_inter is None: 
         return True
         
-    if camp_key in VENTANAS_SERVICIO:
-        ventana = VENTANAS_SERVICIO[camp_key]
-        return ventana['inicio'] <= minutos_inter < ventana['fin']
-        
+    # Validamos que aplique independientemente de prefijos o sufijos
+    for key, ventana in VENTANAS_SERVICIO.items():
+        if key in camp_key or camp_key in key:
+            return ventana['inicio'] <= minutos_inter < ventana['fin']
+            
     return True
 
 def encontrar_columna(df, posibles_nombres):
@@ -576,17 +577,14 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
     duracion_minutos = int(round(duracion_jornada * 60))
     label_jornada_diurna = f"{duracion_jornada:.1f} hrs".replace('.0', '')
 
-    # --- LÓGICA DINÁMICA DE VENTANA DE SERVICIO ---
     min_in_array = [parse_time_str(x) for x in intervalos if parse_time_str(x) is not None]
     if len(min_in_array) > 0:
         min_diurno_inicio = min(min_in_array)
-        # El límite absoluto es el último intervalo + 30 mins
         min_diurno_limite = max(min_in_array) + 30
     else:
         min_diurno_inicio = 7 * 60    
         min_diurno_limite = 22 * 60   
     
-    # La hora máxima de ENTRADA es la hora de salida (límite) menos lo que dura el turno
     min_entrada_maxima = min_diurno_limite - duracion_minutos
 
     valid_starts = []
@@ -596,7 +594,8 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
             valid_starts.append(j)
 
     if len(valid_starts) > 0:
-        max_iterations = 200
+        # Aumentamos agresivamente la memoria de iteraciones (de 200 a 5000)
+        max_iterations = 5000
         iteration = 0
         while iteration < max_iterations:
             iteration += 1
@@ -756,10 +755,6 @@ def process_data():
     except Exception as e:
         gc.collect()
         return jsonify({'error': f"Error: {str(e)}"}), 500
-
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({'error': 'La ruta solicitada no existe'}), 404
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
