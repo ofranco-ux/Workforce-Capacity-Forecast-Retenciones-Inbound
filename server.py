@@ -17,14 +17,11 @@ EXCEL_DEFAULT = os.path.join(BASE_DIR, 'historico.xlsx')
 app = Flask(__name__)
 CORS(app)
 
-# ==========================================
-# VENTANAS DE SERVICIO ACTUALIZADAS A 20:00
-# ==========================================
 VENTANAS_SERVICIO = {
-    'experiencias liverpool': {'inicio': 9 * 60, 'fin': 20 * 60},
-    'experiencias suburbia': {'inicio': 9 * 60, 'fin': 20 * 60},
-    'retenciones liverpool': {'inicio': 9 * 60, 'fin': 20 * 60},
-    'retenciones suburbia': {'inicio': 9 * 60, 'fin': 20 * 60},
+    'experiencias liverpool': {'inicio': 9 * 60, 'fin': 21 * 60},
+    'experiencias suburbia': {'inicio': 9 * 60, 'fin': 21 * 60},
+    'retenciones liverpool': {'inicio': 9 * 60, 'fin': 21 * 60},
+    'retenciones suburbia': {'inicio': 9 * 60, 'fin': 21 * 60},
     'ambulancia servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
     'coppel servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
     'liverpool servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
@@ -579,15 +576,14 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
     duracion_minutos = int(round(duracion_jornada * 60))
     label_jornada_diurna = f"{duracion_jornada:.1f} hrs".replace('.0', '')
 
-    # --- LÓGICA DE PARED DURA (HARD WALL) Y PUNTUACIÓN ARREGLADA ---
     valid_starts = []
-    is_24_7 = (m >= 47)  # Detecta si la campaña opera 24 horas continuas
+    is_24_7 = (m >= 47) 
     
     for j in range(m):
         if is_24_7:
             valid_starts.append(j)
         else:
-            # Si NO es 24 horas, el turno entero DEBE caber dentro de los intervalos existentes (max 20:00)
+            # ESTA ES LA PARED DURA: Ningún turno puede terminar después de tu última ventana
             if j + SHIFT_BLOCKS <= m:
                 valid_starts.append(j)
 
@@ -607,24 +603,21 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
                 if s_idx + SHIFT_BLOCKS <= m:
                     sub_deficit = deficit[s_idx : s_idx + SHIFT_BLOCKS]
                 else:
-                    # Permite cruzar la medianoche SOLAMENTE si la campaña es 24/7
                     sub_deficit = np.concatenate((deficit[s_idx:], deficit[:(s_idx + SHIFT_BLOCKS) - m]))
                 
-                # El algoritmo prioriza cubrir el déficit. 
-                # La penalización por sobre-staffing ahora es mínima (0.001) para no hundir el Service Level.
+                # PRIORIZA CUBRIR SIEMPRE (Evita que el SL se hunda al 16%)
                 score = np.sum(np.maximum(0, sub_deficit)) - np.sum(np.maximum(0, -sub_deficit)) * 0.001
                 
                 if score > best_score:
                     best_score = score
                     best_start_idx = s_idx
 
-            # Solo nos rendimos si ya no logramos puntuar nada positivo
             if best_start_idx == -1 or best_score <= 0.0001:
                 break
                 
             min_in_val = parse_time_str(intervalos[best_start_idx])
             min_out_val = min_in_val + duracion_minutos
-            min_out_val = min_out_val % (24 * 60) # Ajuste para las 00:00
+            min_out_val = min_out_val % (24 * 60) 
             
             h_in_str = f"{(int(min_in_val // 60)):02d}:{(int(min_in_val % 60)):02d}"
             h_out_str = f"{(int(min_out_val // 60)):02d}:{(int(min_out_val % 60)):02d}"
