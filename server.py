@@ -18,12 +18,10 @@ app = Flask(__name__)
 CORS(app)
 
 VENTANAS_SERVICIO = {
-    'coppel servicios': {'inicio': 0 * 60, 'fin': 24 * 60},
-    'coppel': {'inicio': 0 * 60, 'fin': 24 * 60},
-    'telemedic': {'inicio': 0 * 60, 'fin': 24 * 60},
-    'correo': {'inicio': 0 * 60, 'fin': 24 * 60},
-    'liverpool': {'inicio': 9 * 60, 'fin': 21 * 60},
-    'suburbia':  {'inicio': 9 * 60, 'fin': 21 * 60}
+    'Retenciones Liverpool': {'inicio': 9 * 60, 'fin': 20 * 60},
+    'Retenciones Suburbia': {'inicio': 9 * 60, 'fin': 20 * 60},
+    'Experiencias Liverpool': {'inicio': 9 * 60, 'fin': 21 * 60},
+    'Experiencias Suburbia': {'inicio': 9 * 60, 'fin': 21 * 60}
 }
 
 @app.route('/')
