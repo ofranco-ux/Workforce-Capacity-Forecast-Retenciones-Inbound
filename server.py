@@ -576,6 +576,16 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
     duracion_minutos = int(round(duracion_jornada * 60))
     label_jornada_diurna = f"{duracion_jornada:.1f} hrs".replace('.0', '')
 
+    min_in_array = [parse_time_str(x) for x in intervalos if parse_time_str(x) is not None]
+    if len(min_in_array) > 0:
+        min_diurno_inicio = min(min_in_array)
+        min_diurno_limite = max(min_in_array) + 30
+    else:
+        min_diurno_inicio = 7 * 60    
+        min_diurno_limite = 22 * 60   
+    
+    min_entrada_maxima = min_diurno_limite - duracion_minutos
+
     valid_starts = []
     is_24_7 = (m >= 47) 
     
@@ -583,15 +593,34 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
         if is_24_7:
             valid_starts.append(j)
         else:
-            # ESTA ES LA PARED DURA: Ningún turno puede terminar después de tu última ventana
             if j + SHIFT_BLOCKS <= m:
                 valid_starts.append(j)
+
+    # ==========================================
+    # CÁLCULO DE SERVICE LEVEL EN TIEMPO REAL
+    # ==========================================
+    def calc_current_global_sl(current_cob):
+        if tot_llamadas <= 0: return 100.0
+        sl_acum = 0.0
+        for i in range(m):
+            c = llamadas_arr[i]
+            if c > 0:
+                a_erl = (c * aht_arr[i]) / 1800.0
+                n_opt = current_cob[i] * factor_asistencia
+                sl_v = erlang_c_sl_optimizado(a_erl, n_opt, aht_arr[i], target_time)
+                sl_acum += c * sl_v
+        return sl_acum / tot_llamadas
 
     if len(valid_starts) > 0:
         max_iterations = 5000
         iteration = 0
         while iteration < max_iterations:
             iteration += 1
+            
+            # NUEVO: SE DETIENE EXACTAMENTE AL LLEGAR AL TARGET PARA AHORRAR NÓMINA
+            if calc_current_global_sl(cob_hc) >= target_sl_dinamico:
+                break
+
             deficit = req_hc_base - cob_hc
             if np.max(deficit) <= 0:
                 break 
@@ -605,7 +634,6 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
                 else:
                     sub_deficit = np.concatenate((deficit[s_idx:], deficit[:(s_idx + SHIFT_BLOCKS) - m]))
                 
-                # PRIORIZA CUBRIR SIEMPRE (Evita que el SL se hunda al 16%)
                 score = np.sum(np.maximum(0, sub_deficit)) - np.sum(np.maximum(0, -sub_deficit)) * 0.001
                 
                 if score > best_score:
