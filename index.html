@@ -7,11 +7,8 @@
     <meta http-equiv="Pragma" content="no-cache"/>
     <meta http-equiv="Expires" content="0"/>
     <title>Workforce Capacity Forecast — C-Suite Analytics & Scheduling Optimizer</title>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <script>
@@ -76,12 +73,10 @@
 <body class="p-6 md:p-8 min-h-screen">
 
     <header class="flex justify-between items-center bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 border border-indigo-500/30 shadow-[0_0_30px_-10px_rgba(99,102,241,0.3)] backdrop-blur-xl rounded-2xl p-6 mb-8 relative overflow-hidden flex-wrap gap-4">
-        <!-- Efectos de luz de fondo -->
         <div class="absolute -left-10 -top-10 w-40 h-40 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none"></div>
         <div class="absolute right-0 bottom-0 w-64 h-64 bg-violet-600/10 rounded-full blur-3xl pointer-events-none"></div>
         
         <div class="flex items-center gap-5 z-10">
-            <!-- LOGO SVG -->
             <svg class="h-14 w-14 flex-shrink-0 drop-shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-transform hover:scale-105 duration-300" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <defs>
                     <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -393,13 +388,8 @@
         function ordenarMesesCronologicamente(a, b) {
             const partsA = a.toLowerCase().trim().split(' ');
             const partsB = b.toLowerCase().trim().split(' ');
-            
-            const mesA = partsA[0];
-            const anoA = partsA[1] ? parseInt(partsA[1]) : 0;
-            
-            const mesB = partsB[0];
-            const anoB = partsB[1] ? parseInt(partsB[1]) : 0;
-
+            const mesA = partsA[0]; const anoA = partsA[1] ? parseInt(partsA[1]) : 0;
+            const mesB = partsB[0]; const anoB = partsB[1] ? parseInt(partsB[1]) : 0;
             if (anoA !== anoB) return anoA - anoB;
             return (mesesMap[mesA] || 0) - (mesesMap[mesB] || 0);
         }
@@ -417,13 +407,12 @@
                     if(config.chkPicos !== undefined) document.getElementById('chkPicos').checked = config.chkPicos;
                 }
             } catch (e) {
-                console.log("No hay config WFM previa, usando valores default.");
+                console.log("No hay config WFM previa.");
             }
         }
 
         async function saveWFMConfig() {
             if(currentMode === 'ops') return; 
-            
             const config = {
                 targetSl: document.getElementById('targetSl').value,
                 targetTime: document.getElementById('targetTime').value,
@@ -432,16 +421,9 @@
                 chkNocturno: document.getElementById('chkNocturno').checked,
                 chkPicos: document.getElementById('chkPicos').checked
             };
-
             try {
-                await fetch('/api/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
-                });
-            } catch (e) {
-                console.log("No se pudo guardar la config de WFM.");
-            }
+                await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+            } catch (e) {}
         }
 
         function switchMode(mode) {
@@ -454,29 +436,21 @@
             if (mode === 'ops' || mode === 'operaciones') {
                 if (aside) aside.style.display = 'none';
                 if (modOpt) modOpt.style.display = 'none';
-                if (main) {
-                    main.classList.remove('lg:col-span-9');
-                    main.classList.add('lg:col-span-12');
-                }
+                if (main) { main.classList.remove('lg:col-span-9'); main.classList.add('lg:col-span-12'); }
                 if (tag) tag.classList.remove('hidden');
-                
                 setTimeout(() => { if (gapChartInstance) gapChartInstance.resize(); }, 100);
             } else {
                 if (aside) aside.style.display = 'block';
                 if (modOpt) modOpt.style.display = 'block';
-                if (main) {
-                    main.classList.remove('lg:col-span-12');
-                    main.classList.add('lg:col-span-9');
-                }
+                if (main) { main.classList.remove('lg:col-span-12'); main.classList.add('lg:col-span-9'); }
                 if (tag) tag.classList.add('hidden');
-                
-                setTimeout(() => { 
-                    if (optChartInstance) optChartInstance.resize(); 
-                    if (gapChartInstance) gapChartInstance.resize(); 
-                }, 100);
+                setTimeout(() => { if (optChartInstance) optChartInstance.resize(); if (gapChartInstance) gapChartInstance.resize(); }, 100);
             }
         }
 
+        // ==========================================
+        // ERLANG C MATEMÁTICA PURA (FRONTEND)
+        // ==========================================
         function erlang_c_sl_optimizado(A, N, AHT, target_time) {
             if (N <= A || A <= 0 || N <= 0) return 0.0;
             let sum_terms = 1.0;
@@ -495,40 +469,42 @@
 
         function maxCallsForAgents(agentsNetos, aht, targetTime, targetSl) {
             if (agentsNetos <= 0 || aht <= 0) return 0;
-            let low = 0;
-            let high = agentsNetos * (1800 / aht); 
-            let maxCalls = 0;
-            
+            let low = 0; let high = agentsNetos * (1800 / aht); let maxCalls = 0;
             for (let i=0; i<20; i++) { 
                 let mid = (low + high) / 2;
                 let a_erl = (mid * aht) / 1800;
                 let sl = erlang_c_sl_optimizado(a_erl, agentsNetos, aht, targetTime);
-                if (sl >= targetSl) {
-                    maxCalls = mid;
-                    low = mid; 
-                } else {
-                    high = mid; 
-                }
+                if (sl >= targetSl) { maxCalls = mid; low = mid; } else { high = mid; }
             }
             return Math.floor(maxCalls);
         }
 
+        // NUEVA FUNCIÓN QUE EVITA QUE SE CAIGA EL SERVICE LEVEL
+        function calcularAgentesRequeridosErlangC(llamadas, aht, targetTime, targetSl, mermaDecimal) {
+            if (llamadas <= 0 || aht <= 0) return 0;
+            let a_erl = (llamadas * aht) / 1800.0;
+            let factor = Math.max(0.01, 1.0 - mermaDecimal);
+            let n = Math.max(1, Math.floor(a_erl) + 1);
+            while (n < 1000) {
+                let sl = erlang_c_sl_optimizado(a_erl, n, aht, targetTime);
+                if (sl >= targetSl) {
+                    return Math.ceil(n / factor);
+                }
+                n++;
+            }
+            return Math.ceil(n / factor);
+        }
+
         function debouncedActualizarGrafica() {
             clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-                actualizarGrafica();
-            }, 400); 
+            debounceTimer = setTimeout(() => { actualizarGrafica(); }, 400); 
         }
 
         window.addEventListener('DOMContentLoaded', async () => {
             const urlParams = new URLSearchParams(window.location.search);
             const mode = urlParams.get('mode') || urlParams.get('role') || 'wfm';
             switchMode(mode);
-
-            if(mode === 'ops') {
-                await fetchWFMConfig();
-            }
-
+            if(mode === 'ops') { await fetchWFMConfig(); }
             try {
                 const response = await fetch('/api/latest?t=' + new Date().getTime());
                 if (response.ok) {
@@ -538,15 +514,11 @@
                         debouncedActualizarGrafica();
                     }
                 }
-            } catch (e) {
-                console.log("Error cargando pronóstico automático.");
-            }
+            } catch (e) { }
         });
 
         function getProp(row, keys, def = '') {
-            for (let k of keys) {
-                if (row[k] !== undefined && row[k] !== null) return row[k];
-            }
+            for (let k of keys) { if (row[k] !== undefined && row[k] !== null) return row[k]; }
             return def;
         }
 
@@ -567,13 +539,12 @@
 
         async function procesarWFM() {
             const file = document.getElementById('fileInput').files[0];
-            if (!file) { alert("Por favor selecciona tu archivo historico.xlsx (Asegúrate de incluir la hoja 'Plantilla')"); return; }
+            if (!file) { alert("Por favor selecciona tu archivo historico.xlsx"); return; }
             
             await saveWFMConfig();
-
             const btn = document.getElementById('btnProcesar');
-            btn.disabled = true;
-            btn.innerText = "⏳ PROCESANDO...";
+            btn.disabled = true; btn.innerText = "⏳ PROCESANDO...";
+            
             const formData = new FormData();
             formData.append('file', file);
             formData.append('target_sl', document.getElementById('targetSl').value);
@@ -589,33 +560,24 @@
                 } else {
                     alert("Error procesando los datos: " + (globalData.error || "Formato no válido"));
                 }
-            } catch (e) {
-                alert("Error de conexión: " + e.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = "🚀 PROCESAR FORECAST";
-            }
+            } catch (e) { alert("Error de conexión: " + e.message); } 
+            finally { btn.disabled = false; btn.innerText = "🚀 PROCESAR FORECAST"; }
         }
 
         function inicializarFiltrosMultiples() {
             const meses = [...new Set(globalData.map(i => String(getProp(i, ['Mes'], ''))))].filter(Boolean).sort(ordenarMesesCronologicamente);
-            selectedMeses = new Set(meses);
-            renderMenuOptions('Mes', meses, selectedMeses);
+            selectedMeses = new Set(meses); renderMenuOptions('Mes', meses, selectedMeses);
 
             const campanas = [...new Set(globalData.map(i => String(getProp(i, ['Campaña', 'Campana'], 'General'))))].filter(Boolean).sort();
-            selectedCampanas = new Set(campanas);
-            renderMenuOptions('Campana', campanas, selectedCampanas);
+            selectedCampanas = new Set(campanas); renderMenuOptions('Campana', campanas, selectedCampanas);
 
             const fechas = [...new Set(globalData.map(i => String(getProp(i, ['Fecha'], '')).split(' ')[0].split('T')[0]))].filter(Boolean).sort();
-            selectedFechas = new Set(fechas);
-            renderMenuOptions('Fecha', fechas, selectedFechas);
+            selectedFechas = new Set(fechas); renderMenuOptions('Fecha', fechas, selectedFechas);
 
             const intervalos = [...new Set(globalData.map(i => String(getProp(i, ['Intervalo'], '00:00'))))].filter(Boolean).sort();
-            selectedIntervalos = new Set(intervalos);
-            renderMenuOptions('Intervalo', intervalos, selectedIntervalos);
+            selectedIntervalos = new Set(intervalos); renderMenuOptions('Intervalo', intervalos, selectedIntervalos);
             
-            calcularTotalesFiltros();
-            actualizarTextosBotones();
+            calcularTotalesFiltros(); actualizarTextosBotones();
         }
 
         function calcularTotalesFiltros() {
@@ -639,72 +601,44 @@
             allOptions.forEach(opt => {
                 const label = document.createElement('label');
                 label.className = 'flex items-center gap-2 p-1.5 hover:bg-slate-800/60 rounded cursor-pointer transition-colors';
-                const isChecked = setRef.has(opt);
-                
                 const input = document.createElement('input');
-                input.type = 'checkbox';
-                input.checked = isChecked;
+                input.type = 'checkbox'; input.checked = setRef.has(opt);
                 input.className = 'rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0';
-                input.addEventListener('change', (e) => {
-                    onCheckboxChange(type, opt, e.target.checked);
-                });
-
-                const span = document.createElement('span');
-                span.className = 'truncate';
-                span.innerText = opt;
-
-                label.appendChild(input);
-                label.appendChild(span);
-                menu.appendChild(label);
+                input.addEventListener('change', (e) => { onCheckboxChange(type, opt, e.target.checked); });
+                const span = document.createElement('span'); span.className = 'truncate'; span.innerText = opt;
+                label.appendChild(input); label.appendChild(span); menu.appendChild(label);
             });
         }
 
         function onCheckboxChange(type, value, checked) {
             let setRef = type === 'Mes' ? selectedMeses : (type === 'Campana' ? selectedCampanas : (type === 'Fecha' ? selectedFechas : selectedIntervalos));
             if (checked) setRef.add(value); else setRef.delete(value);
-
             if (type === 'Mes') {
                 const fechasInMes = [...new Set(globalData.filter(i => selectedMeses.has(getProp(i, ['Mes'], ''))).map(i => String(getProp(i, ['Fecha'], '')).split(' ')[0].split('T')[0]))].filter(Boolean);
                 selectedFechas = new Set(fechasInMes);
                 const allFechas = [...new Set(globalData.map(i => String(getProp(i, ['Fecha'], '')).split(' ')[0].split('T')[0]))].filter(Boolean).sort();
                 renderMenuOptions('Fecha', allFechas, selectedFechas);
             }
-
-            actualizarTextosBotones();
-            debouncedActualizarGrafica();
+            actualizarTextosBotones(); debouncedActualizarGrafica();
         }
 
         function selectAllFilter(type, selectAll) {
             let setRef = type === 'Mes' ? selectedMeses : (type === 'Campana' ? selectedCampanas : (type === 'Fecha' ? selectedFechas : selectedIntervalos));
             let allOptions = [];
-            if (type === 'Mes') {
-                allOptions = [...new Set(globalData.map(i => String(getProp(i, ['Mes'], ''))))].filter(Boolean);
-            } else if (type === 'Campana') {
-                allOptions = [...new Set(globalData.map(i => String(getProp(i, ['Campaña', 'Campana'], 'General'))))].filter(Boolean);
-            } else if (type === 'Fecha') {
-                allOptions = [...new Set(globalData.map(i => String(getProp(i, ['Fecha'], '')).split(' ')[0].split('T')[0]))].filter(Boolean);
-            } else {
-                allOptions = [...new Set(globalData.map(i => String(getProp(i, ['Intervalo'], '00:00'))))].filter(Boolean);
-            }
+            if (type === 'Mes') allOptions = [...new Set(globalData.map(i => String(getProp(i, ['Mes'], ''))))].filter(Boolean);
+            else if (type === 'Campana') allOptions = [...new Set(globalData.map(i => String(getProp(i, ['Campaña', 'Campana'], 'General'))))].filter(Boolean);
+            else if (type === 'Fecha') allOptions = [...new Set(globalData.map(i => String(getProp(i, ['Fecha'], '')).split(' ')[0].split('T')[0]))].filter(Boolean);
+            else allOptions = [...new Set(globalData.map(i => String(getProp(i, ['Intervalo'], '00:00'))))].filter(Boolean);
+            
             if (selectAll) allOptions.forEach(o => setRef.add(o)); else setRef.clear();
+            if (type === 'Mes') allOptions.sort(ordenarMesesCronologicamente); else allOptions.sort();
             
-            if (type === 'Mes') {
-                allOptions.sort(ordenarMesesCronologicamente);
-            } else {
-                allOptions.sort();
-            }
-            
-            renderMenuOptions(type, allOptions, setRef);
-            actualizarTextosBotones();
-            debouncedActualizarGrafica();
+            renderMenuOptions(type, allOptions, setRef); actualizarTextosBotones(); debouncedActualizarGrafica();
         }
 
         function toggleDropdown(type) {
             ['Mes', 'Campana', 'Fecha', 'Intervalo'].forEach(t => {
-                if (t !== type) {
-                    const menu = document.getElementById(`dropdown${t}Menu`);
-                    if (menu) menu.classList.add('hidden');
-                }
+                if (t !== type) { const menu = document.getElementById(`dropdown${t}Menu`); if (menu) menu.classList.add('hidden'); }
             });
             const selectedMenu = document.getElementById(`dropdown${type}Menu`);
             if (selectedMenu) selectedMenu.classList.toggle('hidden');
@@ -712,42 +646,33 @@
 
         window.addEventListener('click', function(e) {
             ['Mes', 'Campana', 'Fecha', 'Intervalo'].forEach(type => {
-                const btn = document.getElementById(`btnDropdown${type}`);
-                const menu = document.getElementById(`dropdown${type}Menu`);
-                if (btn && menu && !btn.contains(e.target) && !menu.contains(e.target)) {
-                    menu.classList.add('hidden');
-                }
+                const btn = document.getElementById(`btnDropdown${type}`); const menu = document.getElementById(`dropdown${type}Menu`);
+                if (btn && menu && !btn.contains(e.target) && !menu.contains(e.target)) { menu.classList.add('hidden'); }
             });
         });
 
         function actualizarTextosBotones() {
             if(totalesFiltros.M === 0) calcularTotalesFiltros();
-            
-            const btnMes = document.getElementById('mesSelectedText');
-            if (btnMes) btnMes.innerText = `🗓️ MES (${selectedMeses.size}/${totalesFiltros.M})`;
-            
+            document.getElementById('mesSelectedText').innerText = `🗓️ MES (${selectedMeses.size}/${totalesFiltros.M})`;
             document.getElementById('campanaSelectedText').innerText = `🎧 SELECC. (${selectedCampanas.size}/${totalesFiltros.C})`;
             document.getElementById('fechaSelectedText').innerText = `📅 SELECC. (${selectedFechas.size}/${totalesFiltros.F})`;
             document.getElementById('intervaloSelectedText').innerText = `⏰ SELECC. (${selectedIntervalos.size}/${totalesFiltros.I})`;
         }
 
-        function resetAllFilters() {
-            inicializarFiltrosMultiples();
-            debouncedActualizarGrafica();
-        }
+        function resetAllFilters() { inicializarFiltrosMultiples(); debouncedActualizarGrafica(); }
 
         function toggleTableInterval(inter) {
             if (selectedIntervalos.has(inter)) selectedIntervalos.delete(inter); else selectedIntervalos.add(inter);
             const intervalos = [...new Set(globalData.map(i => String(getProp(i, ['Intervalo'], '00:00'))))].filter(Boolean).sort();
             renderMenuOptions('Intervalo', intervalos, selectedIntervalos);
-            actualizarTextosBotones();
-            debouncedActualizarGrafica();
+            actualizarTextosBotones(); debouncedActualizarGrafica();
         }
 
         async function actualizarGrafica() {
             const targetSlObj = parseFloat(document.getElementById('targetSl').value) || 80;
             const targetTimeObj = parseFloat(document.getElementById('targetTime').value) || 20;
             const mermaVal = parseFloat(document.getElementById('merma').value) || 30;
+            const mermaDecimal = mermaVal / 100.0;
             const durJornada = parseFloat(document.getElementById('duracionJornada').value) || 8.0;
             
             const usarPicos = document.getElementById('chkPicos') ? document.getElementById('chkPicos').checked : false;
@@ -759,12 +684,10 @@
                 const f = String(getProp(item, ['Fecha'], '')).split(' ')[0].split('T')[0];
                 const i = String(getProp(item, ['Intervalo'], '00:00'));
                 
-                const matchMes = selectedMeses.size === 0 || selectedMeses.has(m);
-                const matchCamp = selectedCampanas.size === 0 || selectedCampanas.has(c);
-                const matchFecha = selectedFechas.size === 0 || selectedFechas.has(f);
-                const matchInter = selectedIntervalos.size === 0 || selectedIntervalos.has(i);
-
-                return matchMes && matchCamp && matchFecha && matchInter;
+                return (selectedMeses.size === 0 || selectedMeses.has(m)) && 
+                       (selectedCampanas.size === 0 || selectedCampanas.has(c)) && 
+                       (selectedFechas.size === 0 || selectedFechas.has(f)) && 
+                       (selectedIntervalos.size === 0 || selectedIntervalos.has(i));
             });
 
             if (!dfFiltered || dfFiltered.length === 0) {
@@ -772,86 +695,66 @@
                 document.getElementById('kpiAht').innerText = "00:00:00";
                 document.getElementById('kpiHcRequerido').innerText = "0 HC";
                 document.getElementById('kpiHcRoster').innerText = "0 HC";
-                const tbody = document.getElementById('intervalTableBody');
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-slate-500">Sin datos</td></tr>';
+                document.getElementById('intervalTableBody').innerHTML = '<tr><td colspan="7" class="text-center py-6 text-slate-500">Sin datos</td></tr>';
                 return;
             }
 
             const totCalls = dfFiltered.reduce((acc, row) => acc + (Number(getProp(row, ['Llamadas', 'Recibidas'], 0)) || 0), 0);
-            
-            const sumLlamadasAht = dfFiltered.reduce((acc, row) => {
-                const calls = Number(getProp(row, ['Llamadas', 'Recibidas'], 0)) || 0;
-                let ahtSegs = Number(getProp(row, ['AHT_Segundos'], 180));
-                return acc + (calls * ahtSegs);
-            }, 0);
-
+            const sumLlamadasAht = dfFiltered.reduce((acc, row) => acc + ((Number(getProp(row, ['Llamadas', 'Recibidas'], 0)) || 0) * Number(getProp(row, ['AHT_Segundos'], 180))), 0);
             const avgAhtSegs = totCalls > 0 ? Math.round(sumLlamadasAht / totCalls) : 0;
 
             const fechasFiltradas = [...new Set(dfFiltered.map(r => String(getProp(r, ['Fecha'], '')).split(' ')[0].split('T')[0]))].filter(Boolean);
             const todosIntervalos = [...new Set(dfFiltered.map(r => String(getProp(r, ['Intervalo'], '00:00'))))].sort();
+            const activeCampaigns = [...new Set(dfFiltered.map(r => getProp(r, ['Campaña', 'Campana'], 'General')))];
             
             const esVistaSemanal = fechasFiltradas.length > 1;
+            const diasTotalesGlobales = fechasFiltradas.length > 0 ? fechasFiltradas.length : 1;
 
             const llamadasAvgVector = todosIntervalos.map(() => 0);
             const ahtAvgVector = todosIntervalos.map(() => 0);
             const rosterAvgVector = todosIntervalos.map(() => 0); 
             const reqAvgVector = todosIntervalos.map(() => 0); 
 
-            const mapIntervaloFecha = {};
-            dfFiltered.forEach(r => {
-                const fStr = String(getProp(r, ['Fecha'], '')).split(' ')[0].split('T')[0];
-                const iStr = String(getProp(r, ['Intervalo'], '00:00'));
-                const key = `${fStr}_${iStr}`;
-                if (!mapIntervaloFecha[key]) mapIntervaloFecha[key] = [];
-                mapIntervaloFecha[key].push(r);
-            });
-
+            // LÓGICA DE ERLANG C POR CAMPAÑA PARA QUE EL SL NO SE HUNDA AL FILTRAR
             todosIntervalos.forEach((inter, idx) => {
-                let totalCalls = 0, totalHandleTime = 0, totalRoster = 0, totalReq = 0;
-                let maxCalls = 0, maxAht = 0, maxRoster = 0, maxReq = 0; 
+                let sumLlamadasGlobal = 0, sumHTGlobal = 0, sumReqGlobal = 0, sumRosterGlobal = 0;
                 
-                fechasFiltradas.forEach(fStr => {
-                    const subRows = mapIntervaloFecha[`${fStr}_${inter}`] || [];
-                    let sumCalls = 0, sumHT = 0, avgAht = 180, sumRoster = 0, sumReq = 0;
+                activeCampaigns.forEach(camp => {
+                    const campRows = dfFiltered.filter(r => getProp(r, ['Campaña', 'Campana'], 'General') === camp && getProp(r, ['Intervalo'], '00:00') === inter);
+                    if(campRows.length === 0) return;
                     
-                    if (subRows.length > 0) {
-                        sumCalls = subRows.reduce((a, b) => a + (Number(getProp(b, ['Llamadas', 'Recibidas'], 0)) || 0), 0);
-                        sumRoster = subRows.reduce((a, b) => a + (Number(getProp(b, ['HC_Actual_Roster'], 0)) || 0), 0);
-                        sumReq = subRows.reduce((a, b) => a + (Number(getProp(b, ['Agentes_Requeridos'], 0)) || 0), 0);
-                        sumHT = subRows.reduce((a, b) => {
-                            const c = Number(getProp(b, ['Llamadas', 'Recibidas'], 0)) || 0;
-                            const ht = Number(getProp(b, ['AHT_Segundos'], 180)) || 180;
-                            return a + (c * ht);
-                        }, 0);
-                        avgAht = sumCalls > 0 ? sumHT / sumCalls : 180;
-                    }
-
-                    totalCalls += sumCalls;
-                    totalHandleTime += sumHT;
-                    totalRoster += sumRoster;
-                    totalReq += sumReq;
-
-                    if (sumCalls > maxCalls) maxCalls = sumCalls;
-                    if (avgAht > maxAht) maxAht = avgAht;
-                    if (sumRoster > maxRoster) maxRoster = sumRoster;
-                    if (sumReq > maxReq) maxReq = sumReq;
+                    let campSumCalls = 0, campSumHT = 0, campSumRoster = 0, campDiasActivos = 0, campMaxCalls = 0;
+                    
+                    fechasFiltradas.forEach(dStr => {
+                        const row = campRows.find(r => String(getProp(r, ['Fecha'], '')).split(' ')[0].split('T')[0] === dStr);
+                        if(row) {
+                            const c = Number(getProp(row, ['Llamadas', 'Recibidas'], 0)) || 0;
+                            const aht = Number(getProp(row, ['AHT_Segundos'], 180)) || 180;
+                            const rost = Number(getProp(row, ['HC_Actual_Roster'], 0)) || 0;
+                            
+                            campSumCalls += c; campSumHT += (c * aht); campSumRoster += rost;
+                            if(c > 0) campDiasActivos++;
+                            if(c > campMaxCalls) campMaxCalls = c;
+                        }
+                    });
+                    
+                    const divCalls = campDiasActivos > 0 ? campDiasActivos : 1;
+                    const avgCallsCamp = campSumCalls / divCalls;
+                    const avgAhtCamp = campSumCalls > 0 ? campSumHT / campSumCalls : 180;
+                    
+                    const reqCampAvg = calcularAgentesRequeridosErlangC(avgCallsCamp, avgAhtCamp, targetTimeObj, targetSlObj, mermaDecimal);
+                    const reqCampMax = calcularAgentesRequeridosErlangC(campMaxCalls, avgAhtCamp, targetTimeObj, targetSlObj, mermaDecimal);
+                    
+                    if (usarPicos) { sumLlamadasGlobal += campMaxCalls; sumReqGlobal += reqCampMax; } 
+                    else { sumLlamadasGlobal += avgCallsCamp; sumReqGlobal += reqCampAvg; }
+                    
+                    sumHTGlobal += campSumHT; sumRosterGlobal += (campSumRoster / diasTotalesGlobales);
                 });
-
-                const diasTotales = fechasFiltradas.length; 
                 
-                if (diasTotales > 0) {
-                    rosterAvgVector[idx] = Math.round(totalRoster / diasTotales); 
-                    
-                    if (usarPicos) {
-                        llamadasAvgVector[idx] = maxCalls;
-                        ahtAvgVector[idx] = maxAht;
-                        reqAvgVector[idx] = maxReq;
-                    } else {
-                        llamadasAvgVector[idx] = totalCalls / diasTotales;
-                        ahtAvgVector[idx] = totalCalls > 0 ? totalHandleTime / totalCalls : 180;
-                        reqAvgVector[idx] = Math.ceil(totalReq / diasTotales); 
-                    }
-                }
+                llamadasAvgVector[idx] = sumLlamadasGlobal;
+                ahtAvgVector[idx] = sumLlamadasGlobal > 0 ? sumHTGlobal / sumLlamadasGlobal : 180;
+                reqAvgVector[idx] = sumReqGlobal;
+                rosterAvgVector[idx] = Math.round(sumRosterGlobal);
             });
 
             document.getElementById('kpiCalls').innerText = totCalls.toLocaleString();
@@ -859,9 +762,7 @@
 
             try {
                 ejecutarOptimizadorHorarios(todosIntervalos, llamadasAvgVector, ahtAvgVector, rosterAvgVector, reqAvgVector, targetTimeObj, targetSlObj, mermaVal, durJornada, usarNocturno, esVistaSemanal, dfFiltered);
-            } catch (e) {
-                console.log("Error al preparar optimizador:", e);
-            }
+            } catch (e) { }
         }
 
         async function ejecutarOptimizadorHorarios(intervalos, llamadasArr, ahtSegsArr, rosterAvgVector, reqAvgVector, targetTimeObj, targetSlObj, mermaVal, durJornada, usarNocturno, esVistaSemanal, dfFiltered) {
@@ -888,12 +789,8 @@
                 if (!res.ok) throw new Error("Error procesando optimizador en backend");
 
                 const optData = await res.json() || {};
-                
-                const capacidadRosterVector = []; 
-                const capacidadSugeridaVector = []; 
-                
-                const tbody = document.getElementById('intervalTableBody');
-                tbody.innerHTML = '';
+                const capacidadRosterVector = []; const capacidadSugeridaVector = []; 
+                const tbody = document.getElementById('intervalTableBody'); tbody.innerHTML = '';
 
                 intervalos.forEach((inter, idx) => {
                     const rowLlamadas = Math.round(llamadasArr[idx]);
@@ -921,9 +818,7 @@
                     tr.onclick = () => toggleTableInterval(inter);
                     tr.className = `transition-all duration-200 hover:bg-slate-800/40`;
                     tr.innerHTML = `
-                        <td class="py-2.5 px-4 font-bold text-slate-200 flex items-center gap-2">
-                            <span class="text-[10px] text-cyan-400">●</span> ${inter}
-                        </td>
+                        <td class="py-2.5 px-4 font-bold text-slate-200 flex items-center gap-2"><span class="text-[10px] text-cyan-400">●</span> ${inter}</td>
                         <td class="py-2.5 px-4 text-slate-300">${rowLlamadas.toLocaleString()}</td>
                         <td class="py-2.5 px-4 text-slate-300">${formatAHT(rowAhtSegs)}</td>
                         <td class="py-2.5 px-4 text-violet-400 font-bold text-sm">${rowReq}</td>
@@ -934,88 +829,25 @@
                     tbody.appendChild(tr);
                 });
 
-                // ==========================================
-                // GRÁFICA MEJORADA DE GAP
-                // ==========================================
                 if (gapChartInstance) gapChartInstance.destroy();
                 const ctxGap = document.getElementById('gapChart').getContext('2d');
-                
                 let gradientBar = ctxGap.createLinearGradient(0, 0, 0, 400);
-                gradientBar.addColorStop(0, 'rgba(6, 182, 212, 0.6)');
-                gradientBar.addColorStop(1, 'rgba(6, 182, 212, 0.05)');
+                gradientBar.addColorStop(0, 'rgba(6, 182, 212, 0.6)'); gradientBar.addColorStop(1, 'rgba(6, 182, 212, 0.05)');
 
                 gapChartInstance = new Chart(ctxGap, {
                     type: 'bar',
                     data: {
                         labels: intervalos,
                         datasets: [
-                            { 
-                                label: 'Capacidad Malla Sugerida', 
-                                type: 'line',
-                                data: capacidadSugeridaVector, 
-                                borderColor: '#8B5CF6', 
-                                backgroundColor: '#8B5CF6',
-                                borderWidth: 3,
-                                tension: 0.4,
-                                pointRadius: 0,
-                                pointHoverRadius: 6,
-                                borderDash: [4, 4] 
-                            },
-                            { 
-                                label: 'Capacidad Roster Actual', 
-                                type: 'line',
-                                data: capacidadRosterVector, 
-                                borderColor: '#F59E0B', 
-                                backgroundColor: '#F59E0B',
-                                borderWidth: 3,
-                                tension: 0.4,
-                                pointRadius: 0,
-                                pointHoverRadius: 6
-                            },
-                            { 
-                                label: 'Llamadas (FCST)', 
-                                data: llamadasArr.map(x => Math.round(x)), 
-                                backgroundColor: gradientBar, 
-                                borderColor: 'transparent',
-                                borderWidth: 0,
-                                borderRadius: 4,
-                                barPercentage: 0.7
-                            }
+                            { label: 'Capacidad Malla Sugerida', type: 'line', data: capacidadSugeridaVector, borderColor: '#8B5CF6', backgroundColor: '#8B5CF6', borderWidth: 3, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, borderDash: [4, 4] },
+                            { label: 'Capacidad Roster Actual', type: 'line', data: capacidadRosterVector, borderColor: '#F59E0B', backgroundColor: '#F59E0B', borderWidth: 3, tension: 0.4, pointRadius: 0, pointHoverRadius: 6 },
+                            { label: 'Llamadas (FCST)', data: llamadasArr.map(x => Math.round(x)), backgroundColor: gradientBar, borderColor: 'transparent', borderWidth: 0, borderRadius: 4, barPercentage: 0.7 }
                         ]
                     },
                     options: { 
-                        responsive: true, 
-                        maintainAspectRatio: false, 
-                        interaction: {
-                            mode: 'index',
-                            intersect: false,
-                        },
-                        plugins: { 
-                            legend: { 
-                                labels: { color: '#94A3B8', font: { family: 'Plus Jakarta Sans', size: 11, weight: 600 }, usePointStyle: true, boxWidth: 8 } 
-                            },
-                            tooltip: {
-                                backgroundColor: 'rgba(13, 19, 34, 0.95)',
-                                titleColor: '#F1F5F9',
-                                bodyColor: '#cbd5e1',
-                                borderColor: 'rgba(255, 255, 255, 0.1)',
-                                borderWidth: 1,
-                                padding: 12,
-                                boxPadding: 6,
-                                usePointStyle: true
-                            }
-                        }, 
-                        scales: { 
-                            x: { 
-                                grid: { display: false }, 
-                                ticks: { color: '#64748B', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 12 } 
-                            }, 
-                            y: { 
-                                grid: { color: 'rgba(255,255,255,0.05)', borderDash: [4, 4] }, 
-                                ticks: { precision: 0, color: '#64748B', font: { family: 'JetBrains Mono', size: 10 } },
-                                beginAtZero: true
-                            } 
-                        } 
+                        responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false, },
+                        plugins: { legend: { labels: { color: '#94A3B8', font: { family: 'Plus Jakarta Sans', size: 11, weight: 600 }, usePointStyle: true, boxWidth: 8 } }, tooltip: { backgroundColor: 'rgba(13, 19, 34, 0.95)', titleColor: '#F1F5F9', bodyColor: '#cbd5e1', borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, padding: 12, boxPadding: 6, usePointStyle: true } }, 
+                        scales: { x: { grid: { display: false }, ticks: { color: '#64748B', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 12 } }, y: { grid: { color: 'rgba(255,255,255,0.05)', borderDash: [4, 4] }, ticks: { precision: 0, color: '#64748B', font: { family: 'JetBrains Mono', size: 10 } }, beginAtZero: true } } 
                     }
                 });
 
@@ -1023,15 +855,9 @@
                 let totalRosterHC = 0;
                 
                 if (esVistaSemanal) {
-                    uniqueCampaigns.forEach(c => {
-                        const row = dfFiltered.find(r => r.Campaña === c);
-                        if (row) totalRosterHC += (row.Total_Roster_Campana || 0);
-                    });
+                    uniqueCampaigns.forEach(c => { const row = dfFiltered.find(r => r.Campaña === c); if (row) totalRosterHC += (row.Total_Roster_Campana || 0); });
                 } else {
-                    uniqueCampaigns.forEach(c => {
-                        const row = dfFiltered.find(r => r.Campaña === c);
-                        if (row) totalRosterHC += (row.Total_Roster_Dia || 0);
-                    });
+                    uniqueCampaigns.forEach(c => { const row = dfFiltered.find(r => r.Campaña === c); if (row) totalRosterHC += (row.Total_Roster_Dia || 0); });
                 }
 
                 const nominaRequeridaTotalSemana = optData.headcount_semanal_6x1 || 0;
@@ -1040,23 +866,15 @@
                 
                 document.getElementById('kpiHcRequerido').innerText = hcRequeridoDisplay.toLocaleString() + ' HC';
                 document.getElementById('optHeadcount').innerText = hcRequeridoDisplay.toLocaleString();
-                
                 document.getElementById('kpiHcRosterTitle').innerText = esVistaSemanal ? "PLANTILLA TOTAL ACTUAL" : "PLANTILLA PROGRAMADA HOY";
                 document.getElementById('kpiHcRosterSub').innerText = esVistaSemanal ? "Total de agentes contratados en Roster" : "Descuenta descansos (DD-DD) del día";
                 document.getElementById('kpiHcRoster').innerText = totalRosterHC.toLocaleString() + ' HC';
                 
                 const gapTotal = totalRosterHC - hcRequeridoDisplay;
                 const gapEl = document.getElementById('kpiHcGap');
-                if (gapTotal > 0) {
-                    gapEl.innerText = `+${gapTotal} Sobran`;
-                    gapEl.className = 'text-xs font-bold mb-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono-num';
-                } else if (gapTotal < 0) {
-                    gapEl.innerText = `${gapTotal} Faltan`;
-                    gapEl.className = 'text-xs font-bold mb-1 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 font-mono-num';
-                } else {
-                    gapEl.innerText = `✓ Balanceado`;
-                    gapEl.className = 'text-xs font-bold mb-1 px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono-num';
-                }
+                if (gapTotal > 0) { gapEl.innerText = `+${gapTotal} Sobran`; gapEl.className = 'text-xs font-bold mb-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono-num'; } 
+                else if (gapTotal < 0) { gapEl.innerText = `${gapTotal} Faltan`; gapEl.className = 'text-xs font-bold mb-1 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 font-mono-num'; } 
+                else { gapEl.innerText = `✓ Balanceado`; gapEl.className = 'text-xs font-bold mb-1 px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono-num'; }
 
                 if (esVistaSemanal) {
                     document.getElementById('lblHeadcountType').innerText = usarNocturno ? 'HC Requerido (Mixto)' : 'HC Requerido';
@@ -1083,12 +901,8 @@
                 
                 globalTurnosOptimos = turnosBase.map((t, index) => {
                     let nominaTurno;
-                    if (index === turnosBase.length - 1) {
-                        nominaTurno = hcRequeridoDisplay - accumulatedNomina;
-                    } else {
-                        nominaTurno = Math.round((t.agentes_a_programar / totalDiarioMalla) * hcRequeridoDisplay);
-                        accumulatedNomina += nominaTurno;
-                    }
+                    if (index === turnosBase.length - 1) { nominaTurno = hcRequeridoDisplay - accumulatedNomina; } 
+                    else { nominaTurno = Math.round((t.agentes_a_programar / totalDiarioMalla) * hcRequeridoDisplay); accumulatedNomina += nominaTurno; }
                     nominaTurno = Math.max(0, nominaTurno);
                     return { ...t, nomina_a_contratar: nominaTurno };
                 });
@@ -1103,9 +917,7 @@
                         const tr = document.createElement('tr');
                         tr.className = 'hover:bg-slate-800/40 transition-colors';
                         tr.innerHTML = `
-                            <td class="py-2.5 px-4 font-bold text-amber-400 flex items-center gap-2">
-                                <span>🕒</span> ${t.horario_entrada}
-                            </td>
+                            <td class="py-2.5 px-4 font-bold text-amber-400 flex items-center gap-2"><span>🕒</span> ${t.horario_entrada}</td>
                             <td class="py-2.5 px-4 text-slate-300 font-bold">${t.horario_salida}</td>
                             <td class="py-2.5 px-4 text-slate-400">${t.duracion}</td>
                             <td class="py-2.5 px-4 text-amber-300 font-black text-sm">${t.nomina_a_contratar}</td>
@@ -1115,147 +927,53 @@
                     });
                 }
 
-                // ==========================================
-                // GRÁFICA MEJORADA DE OPTIMIZACIÓN
-                // ==========================================
                 if (optChartInstance) optChartInstance.destroy();
                 const ctxOpt = document.getElementById('optChart').getContext('2d');
                 const labelCurvaCob = usarNocturno ? "Malla Sugerida (Mixta)" : `Malla Sugerida (${durJornada}h)`;
-
                 let gradientArea = ctxOpt.createLinearGradient(0, 0, 0, 300);
-                gradientArea.addColorStop(0, 'rgba(6, 182, 212, 0.4)');
-                gradientArea.addColorStop(1, 'rgba(6, 182, 212, 0.01)');
+                gradientArea.addColorStop(0, 'rgba(6, 182, 212, 0.4)'); gradientArea.addColorStop(1, 'rgba(6, 182, 212, 0.01)');
 
                 optChartInstance = new Chart(ctxOpt, {
                     type: 'line',
                     data: {
                         labels: intervalos,
                         datasets: [
-                            { 
-                                label: 'HC Requerido (Motor)', 
-                                data: reqAvgVector, 
-                                borderColor: '#06B6D4', 
-                                backgroundColor: gradientArea, 
-                                fill: true, 
-                                tension: 0.4, 
-                                borderWidth: 3,
-                                pointRadius: 0,
-                                pointHoverRadius: 6
-                            },
-                            { 
-                                label: 'Plantilla Actual (Roster)', 
-                                data: rosterAvgVector, 
-                                borderColor: '#10B981', 
-                                backgroundColor: '#10B981', 
-                                fill: false, 
-                                tension: 0.4, 
-                                borderWidth: 2, 
-                                borderDash: [5, 5],
-                                pointRadius: 0,
-                                pointHoverRadius: 6
-                            },
-                            { 
-                                label: labelCurvaCob, 
-                                data: (optData.cobertura_optima || []), 
-                                borderColor: '#F59E0B', 
-                                backgroundColor: '#F59E0B', 
-                                fill: false, 
-                                tension: 0.4, 
-                                borderWidth: 3, 
-                                borderDash: [4, 4],
-                                pointRadius: 0,
-                                pointHoverRadius: 6
-                            }
+                            { label: 'HC Requerido (Motor)', data: reqAvgVector, borderColor: '#06B6D4', backgroundColor: gradientArea, fill: true, tension: 0.4, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6 },
+                            { label: 'Plantilla Actual (Roster)', data: rosterAvgVector, borderColor: '#10B981', backgroundColor: '#10B981', fill: false, tension: 0.4, borderWidth: 2, borderDash: [5, 5], pointRadius: 0, pointHoverRadius: 6 },
+                            { label: labelCurvaCob, data: (optData.cobertura_optima || []), borderColor: '#F59E0B', backgroundColor: '#F59E0B', fill: false, tension: 0.4, borderWidth: 3, borderDash: [4, 4], pointRadius: 0, pointHoverRadius: 6 }
                         ]
                     },
                     options: { 
-                        responsive: true, 
-                        maintainAspectRatio: false, 
-                        interaction: {
-                            mode: 'index',
-                            intersect: false,
-                        },
-                        plugins: { 
-                            legend: { 
-                                labels: { color: '#94A3B8', font: { family: 'Plus Jakarta Sans', size: 11, weight: 600 }, usePointStyle: true, boxWidth: 8 } 
-                            },
-                            tooltip: {
-                                backgroundColor: 'rgba(13, 19, 34, 0.95)',
-                                titleColor: '#F1F5F9',
-                                bodyColor: '#cbd5e1',
-                                borderColor: 'rgba(255, 255, 255, 0.1)',
-                                borderWidth: 1,
-                                padding: 12,
-                                boxPadding: 6,
-                                usePointStyle: true
-                            }
-                        }, 
-                        scales: { 
-                            x: { 
-                                grid: { display: false }, 
-                                ticks: { color: '#64748B', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 12 } 
-                            }, 
-                            y: { 
-                                grid: { color: 'rgba(255,255,255,0.05)', borderDash: [4, 4] }, 
-                                ticks: { precision: 0, color: '#64748B', font: { family: 'JetBrains Mono', size: 10 } },
-                                beginAtZero: true
-                            } 
-                        } 
+                        responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false, },
+                        plugins: { legend: { labels: { color: '#94A3B8', font: { family: 'Plus Jakarta Sans', size: 11, weight: 600 }, usePointStyle: true, boxWidth: 8 } }, tooltip: { backgroundColor: 'rgba(13, 19, 34, 0.95)', titleColor: '#F1F5F9', bodyColor: '#cbd5e1', borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, padding: 12, boxPadding: 6, usePointStyle: true } }, 
+                        scales: { x: { grid: { display: false }, ticks: { color: '#64748B', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 12 } }, y: { grid: { color: 'rgba(255,255,255,0.05)', borderDash: [4, 4] }, ticks: { precision: 0, color: '#64748B', font: { family: 'JetBrains Mono', size: 10 } }, beginAtZero: true } } 
                     }
                 });
 
-            } catch (e) {
-                console.log("Error al optimizar turnos en frontend:", e);
-                document.getElementById('compSlOptimo').innerText = "Error";
-                document.getElementById('optHeadcount').innerText = "Error";
-            }
+            } catch (e) { }
         }
 
         function exportarTurnosCSV() {
-            if (!globalTurnosOptimos || globalTurnosOptimos.length === 0) {
-                alert("No hay turnos optimizados para exportar.");
-                return;
-            }
+            if (!globalTurnosOptimos || globalTurnosOptimos.length === 0) { alert("No hay turnos optimizados para exportar."); return; }
             const headers = ["Horario_Entrada", "Horario_Salida", "Duracion", "HC_Requerido"];
             const csvRows = [headers.join(",")];
-            globalTurnosOptimos.forEach(t => {
-                csvRows.push([t.horario_entrada, t.horario_salida, t.duracion, t.nomina_a_contratar].join(","));
-            });
+            globalTurnosOptimos.forEach(t => { csvRows.push([t.horario_entrada, t.horario_salida, t.duracion, t.nomina_a_contratar].join(",")); });
             const blob = new Blob([csvRows.join("\n")], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.setAttribute('href', url);
-            a.setAttribute('download', `Malla_Turnos_Optimos_HC_${new Date().toISOString().slice(0,10)}.csv`);
-            a.click();
+            const url = window.URL.createObjectURL(blob); const a = document.createElement('a');
+            a.setAttribute('href', url); a.setAttribute('download', `Malla_Turnos_Optimos_HC_${new Date().toISOString().slice(0,10)}.csv`); a.click();
         }
 
         function exportarCSV() {
-            if (!globalData || globalData.length === 0) {
-                alert("No hay datos cargados para exportar.");
-                return;
-            }
+            if (!globalData || globalData.length === 0) { alert("No hay datos cargados para exportar."); return; }
             const headers = ["Campana", "Mes", "Fecha", "Dia_Semana", "Intervalo", "Llamadas", "AHT_HH_MM_SS", "Agentes_Requeridos_HC", "HC_Actual_Roster"];
             const csvRows = [headers.join(",")];
             globalData.forEach(row => {
-                const values = [
-                    getProp(row, ['Campaña', 'Campana'], 'General'),
-                    getProp(row, ['Mes'], ''),
-                    getProp(row, ['Fecha'], ''),
-                    getProp(row, ['Día_Semana', 'Dia_Semana'], ''),
-                    getProp(row, ['Intervalo'], '00:00'),
-                    getProp(row, ['Llamadas', 'Recibidas'], 0),
-                    formatAHT(getProp(row, ['AHT_Segundos'], 180)),
-                    getProp(row, ['Agentes_Requeridos'], 0),
-                    getProp(row, ['HC_Actual_Roster'], 0)
-                ];
+                const values = [ getProp(row, ['Campaña', 'Campana'], 'General'), getProp(row, ['Mes'], ''), getProp(row, ['Fecha'], ''), getProp(row, ['Día_Semana', 'Dia_Semana'], ''), getProp(row, ['Intervalo'], '00:00'), getProp(row, ['Llamadas', 'Recibidas'], 0), formatAHT(getProp(row, ['AHT_Segundos'], 180)), getProp(row, ['Agentes_Requeridos'], 0), getProp(row, ['HC_Actual_Roster'], 0) ];
                 csvRows.push(values.join(","));
             });
             const blob = new Blob([csvRows.join("\n")], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.setAttribute('href', url);
-            a.setAttribute('download', `WFM_Reporte_Ejecutivo_HC_${new Date().toISOString().slice(0,10)}.csv`);
-            a.click();
+            const url = window.URL.createObjectURL(blob); const a = document.createElement('a');
+            a.setAttribute('href', url); a.setAttribute('download', `WFM_Reporte_Ejecutivo_HC_${new Date().toISOString().slice(0,10)}.csv`); a.click();
         }
     </script>
 </body>
