@@ -110,11 +110,18 @@
                 <p class="text-xs text-indigo-200 mt-1 font-medium tracking-wide">Capacity Planning & Scheduling Optimizer</p>
             </div>
         </div>
+
+        <!-- BOTÓN PARA OCULTAR/MOSTRAR PANEL (Solo visible en WFM) -->
+        <div class="z-10 ml-auto">
+            <button id="btnToggleSidebar" onclick="toggleSidebar()" class="bg-slate-800/50 hover:bg-slate-700/80 text-slate-300 border border-slate-600/50 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 font-mono shadow-lg">
+                <span id="iconSidebar" class="text-cyan-400">◀</span> <span id="textSidebar">Ocultar Parámetros</span>
+            </button>
+        </div>
     </header>
 
     <div class="grid grid-cols-12 gap-8">
 
-        <aside id="panelControl" class="col-span-12 lg:col-span-3 glass-panel p-6 rounded-2xl space-y-6 h-fit relative">
+        <aside id="panelControl" class="col-span-12 lg:col-span-3 glass-panel p-6 rounded-2xl space-y-6 h-fit relative transition-all duration-300">
             <div class="flex items-center justify-between pb-4 border-b border-slate-800/80">
                 <h2 class="text-xs font-black text-slate-200 uppercase tracking-widest flex items-center gap-2">
                     <span class="text-cyan-400">⚡</span> Parámetros de Control
@@ -174,7 +181,7 @@
             </button>
         </aside>
 
-        <main id="dashboardMain" class="col-span-12 lg:col-span-9 space-y-6">
+        <main id="dashboardMain" class="col-span-12 lg:col-span-9 space-y-6 transition-all duration-300">
 
             <div class="glass-panel p-4 rounded-2xl flex justify-between items-center border border-slate-800/80 flex-wrap gap-4 relative z-50 overflow-visible">
                 <div class="flex items-center gap-3">
@@ -385,6 +392,7 @@
         let debounceTimer;
         let totalesFiltros = { M: 0, C: 0, F: 0, I: 0 };
         let currentMode = 'wfm';
+        let isSidebarVisible = true; // Control de visualización del panel
 
         const mesesMap = {
             "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
@@ -403,6 +411,38 @@
 
             if (anoA !== anoB) return anoA - anoB;
             return (mesesMap[mesA] || 0) - (mesesMap[mesB] || 0);
+        }
+
+        // --- FUNCIÓN PARA OCULTAR/MOSTRAR EL PANEL IZQUIERDO ---
+        function toggleSidebar() {
+            const aside = document.getElementById('panelControl');
+            const main = document.getElementById('dashboardMain');
+            const icon = document.getElementById('iconSidebar');
+            const btnText = document.getElementById('textSidebar');
+
+            if (isSidebarVisible) {
+                // Ocultar
+                aside.classList.add('hidden');
+                main.classList.remove('lg:col-span-9');
+                main.classList.add('lg:col-span-12');
+                icon.innerText = '▶';
+                btnText.innerText = 'Mostrar Parámetros';
+                isSidebarVisible = false;
+            } else {
+                // Mostrar
+                aside.classList.remove('hidden');
+                main.classList.remove('lg:col-span-12');
+                main.classList.add('lg:col-span-9');
+                icon.innerText = '◀';
+                btnText.innerText = 'Ocultar Parámetros';
+                isSidebarVisible = true;
+            }
+            
+            // Reajustar las gráficas para que tomen el nuevo ancho
+            setTimeout(() => { 
+                if (optChartInstance) optChartInstance.resize(); 
+                if (gapChartInstance) gapChartInstance.resize(); 
+            }, 150);
         }
 
         async function fetchWFMConfig() {
@@ -451,10 +491,12 @@
             const main = document.getElementById('dashboardMain');
             const tag = document.getElementById('tagModoOps');
             const modOpt = document.getElementById('modOptimizacion');
+            const btnToggle = document.getElementById('btnToggleSidebar');
 
             if (mode === 'ops' || mode === 'operaciones') {
                 if (aside) aside.style.display = 'none';
                 if (modOpt) modOpt.style.display = 'none';
+                if (btnToggle) btnToggle.style.display = 'none'; // Ocultar botón de toggle a los de Operaciones
                 if (main) {
                     main.classList.remove('lg:col-span-9');
                     main.classList.add('lg:col-span-12');
@@ -463,11 +505,16 @@
                 
                 setTimeout(() => { if (gapChartInstance) gapChartInstance.resize(); }, 100);
             } else {
-                if (aside) aside.style.display = 'block';
+                if (aside) aside.style.display = '';
                 if (modOpt) modOpt.style.display = 'block';
+                if (btnToggle) btnToggle.style.display = 'flex';
                 if (main) {
                     main.classList.remove('lg:col-span-12');
-                    main.classList.add('lg:col-span-9');
+                    if (isSidebarVisible) {
+                        main.classList.add('lg:col-span-9');
+                    } else {
+                        main.classList.add('lg:col-span-12');
+                    }
                 }
                 if (tag) tag.classList.add('hidden');
                 
