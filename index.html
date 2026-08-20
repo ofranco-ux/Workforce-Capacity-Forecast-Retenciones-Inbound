@@ -111,10 +111,10 @@
             </div>
         </div>
 
-        <!-- BOTÓN PARA OCULTAR/MOSTRAR PANEL (Solo visible en WFM) -->
-        <div class="z-10 ml-auto">
-            <button id="btnToggleSidebar" onclick="toggleSidebar()" class="bg-slate-800/50 hover:bg-slate-700/80 text-slate-300 border border-slate-600/50 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 font-mono shadow-lg">
-                <span id="iconSidebar" class="text-cyan-400">◀</span> <span id="textSidebar">Ocultar Parámetros</span>
+        <!-- BOTÓN DE RESCATE (Solo aparece cuando el panel se oculta) -->
+        <div id="containerShowSidebar" class="z-10 ml-auto hidden">
+            <button onclick="toggleSidebar()" class="bg-slate-800/50 hover:bg-slate-700/80 text-slate-300 border border-slate-600/50 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 font-mono shadow-lg">
+                <span class="text-cyan-400">▶</span> Mostrar Parámetros
             </button>
         </div>
     </header>
@@ -122,9 +122,15 @@
     <div class="grid grid-cols-12 gap-8">
 
         <aside id="panelControl" class="col-span-12 lg:col-span-3 glass-panel p-6 rounded-2xl space-y-6 h-fit relative transition-all duration-300">
+            
+            <!-- BOTON OCULTAR (DENTRO DEL PANEL) -->
+            <button onclick="toggleSidebar()" class="w-full bg-slate-800/50 hover:bg-slate-700/80 text-slate-300 border border-slate-600/50 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 font-mono shadow-sm">
+                <span class="text-cyan-400">◀</span> Ocultar Parámetros
+            </button>
+
             <div class="flex items-center justify-between pb-4 border-b border-slate-800/80">
                 <h2 class="text-xs font-black text-slate-200 uppercase tracking-widest flex items-center gap-2">
-                    <span class="text-cyan-400">⚡</span> Parámetros de Control
+                    <span class="text-cyan-400">⚡</span> Parámetros
                 </h2>
                 <span class="text-[10px] text-slate-500 font-mono">SETTINGS</span>
             </div>
@@ -392,7 +398,7 @@
         let debounceTimer;
         let totalesFiltros = { M: 0, C: 0, F: 0, I: 0 };
         let currentMode = 'wfm';
-        let isSidebarVisible = true; // Control de visualización del panel
+        let isSidebarVisible = true; 
 
         const mesesMap = {
             "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
@@ -413,32 +419,36 @@
             return (mesesMap[mesA] || 0) - (mesesMap[mesB] || 0);
         }
 
-        // --- FUNCIÓN PARA OCULTAR/MOSTRAR EL PANEL IZQUIERDO ---
+        // --- LÓGICA PARA OCULTAR/MOSTRAR PANEL IZQUIERDO ---
         function toggleSidebar() {
             const aside = document.getElementById('panelControl');
             const main = document.getElementById('dashboardMain');
-            const icon = document.getElementById('iconSidebar');
-            const btnText = document.getElementById('textSidebar');
+            const containerShow = document.getElementById('containerShowSidebar');
 
             if (isSidebarVisible) {
-                // Ocultar
-                aside.classList.add('hidden');
-                main.classList.remove('lg:col-span-9');
-                main.classList.add('lg:col-span-12');
-                icon.innerText = '▶';
-                btnText.innerText = 'Mostrar Parámetros';
+                // Ocultar panel
+                if (aside) aside.style.display = 'none';
+                if (main) {
+                    main.classList.remove('lg:col-span-9');
+                    main.classList.add('lg:col-span-12');
+                }
+                // Solo mostrar botón "Mostrar" si no estamos en vista operaciones
+                if (containerShow && currentMode !== 'ops' && currentMode !== 'operaciones') {
+                    containerShow.classList.remove('hidden');
+                }
                 isSidebarVisible = false;
             } else {
-                // Mostrar
-                aside.classList.remove('hidden');
-                main.classList.remove('lg:col-span-12');
-                main.classList.add('lg:col-span-9');
-                icon.innerText = '◀';
-                btnText.innerText = 'Ocultar Parámetros';
+                // Mostrar panel
+                if (aside) aside.style.display = 'block';
+                if (main) {
+                    main.classList.remove('lg:col-span-12');
+                    main.classList.add('lg:col-span-9');
+                }
+                if (containerShow) containerShow.classList.add('hidden');
                 isSidebarVisible = true;
             }
             
-            // Reajustar las gráficas para que tomen el nuevo ancho
+            // Reajustar tamaño de gráficas
             setTimeout(() => { 
                 if (optChartInstance) optChartInstance.resize(); 
                 if (gapChartInstance) gapChartInstance.resize(); 
@@ -491,12 +501,13 @@
             const main = document.getElementById('dashboardMain');
             const tag = document.getElementById('tagModoOps');
             const modOpt = document.getElementById('modOptimizacion');
-            const btnToggle = document.getElementById('btnToggleSidebar');
+            const containerShow = document.getElementById('containerShowSidebar');
 
             if (mode === 'ops' || mode === 'operaciones') {
                 if (aside) aside.style.display = 'none';
                 if (modOpt) modOpt.style.display = 'none';
-                if (btnToggle) btnToggle.style.display = 'none'; // Ocultar botón de toggle a los de Operaciones
+                if (containerShow) containerShow.classList.add('hidden'); // Nunca mostrar en ops
+                
                 if (main) {
                     main.classList.remove('lg:col-span-9');
                     main.classList.add('lg:col-span-12');
@@ -505,18 +516,25 @@
                 
                 setTimeout(() => { if (gapChartInstance) gapChartInstance.resize(); }, 100);
             } else {
-                if (aside) aside.style.display = '';
                 if (modOpt) modOpt.style.display = 'block';
-                if (btnToggle) btnToggle.style.display = 'flex';
-                if (main) {
-                    main.classList.remove('lg:col-span-12');
-                    if (isSidebarVisible) {
+                if (tag) tag.classList.add('hidden');
+                
+                // Mantener estado del toggle actual
+                if (isSidebarVisible) {
+                    if (aside) aside.style.display = 'block';
+                    if (containerShow) containerShow.classList.add('hidden');
+                    if (main) {
+                        main.classList.remove('lg:col-span-12');
                         main.classList.add('lg:col-span-9');
-                    } else {
+                    }
+                } else {
+                    if (aside) aside.style.display = 'none';
+                    if (containerShow) containerShow.classList.remove('hidden');
+                    if (main) {
+                        main.classList.remove('lg:col-span-9');
                         main.classList.add('lg:col-span-12');
                     }
                 }
-                if (tag) tag.classList.add('hidden');
                 
                 setTimeout(() => { 
                     if (optChartInstance) optChartInstance.resize(); 
@@ -828,7 +846,6 @@
                 }
             });
 
-            // AQUÍ ESTÁ LA MAGIA: Le decimos que NO la muestre si está en modo 'ops' u 'operaciones'
             if (Object.keys(campanasModificadas).length > 0 && reforecastAlert && currentMode !== 'ops' && currentMode !== 'operaciones') {
                 reforecastAlert.classList.remove('hidden');
                 let detalles = Object.entries(campanasModificadas).map(([camp, factor]) => {
