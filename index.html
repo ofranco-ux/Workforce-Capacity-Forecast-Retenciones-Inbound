@@ -781,7 +781,8 @@
                 }
             });
 
-            if (Object.keys(campanasModificadas).length > 0 && reforecastAlert) {
+            // AQUÍ ESTÁ LA MAGIA: Le decimos que NO la muestre si está en modo 'ops' u 'operaciones'
+            if (Object.keys(campanasModificadas).length > 0 && reforecastAlert && currentMode !== 'ops' && currentMode !== 'operaciones') {
                 reforecastAlert.classList.remove('hidden');
                 let detalles = Object.entries(campanasModificadas).map(([camp, factor]) => {
                     let pct = Math.round((factor - 1) * 100);
