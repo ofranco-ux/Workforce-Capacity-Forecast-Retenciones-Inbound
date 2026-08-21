@@ -36,6 +36,21 @@ VENTANAS_SERVICIO = {
     'retenciones liverpool': {'inicio': 9 * 60, 'fin': 20 * 60}
 }
 
+# --- BUSCADOR UNIVERSAL DE ARCHIVO EXCEL ---
+def buscar_archivo_excel():
+    if os.path.exists(EXCEL_DEFAULT):
+        return EXCEL_DEFAULT
+    try:
+        archivos = [f for f in os.listdir(BASE_DIR) if f.lower().endswith('.xlsx') and not f.startswith('~')]
+        if not archivos:
+            return None
+        for f in archivos:
+            if 'historico' in f.lower():
+                return os.path.join(BASE_DIR, f)
+        return os.path.join(BASE_DIR, archivos[0])
+    except Exception:
+        return None
+
 @app.route('/')
 @app.route('/index.html')
 def serve_index():
@@ -348,7 +363,7 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
             df_roster = pd.read_excel(xls_file, sheet_name=sheet_roster, engine='openpyxl')
             roster_coverage, roster_total_camp, roster_total_dia_camp = procesar_hoja_roster(df_roster)
         except Exception as e:
-            print("Aviso: No se pudo procesar la hoja de Roster:", e)
+            pass
 
     df_raw = pd.read_excel(xls_file, sheet_name=sheet_calls, engine='openpyxl')
 
@@ -367,14 +382,17 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
     
     df_raw[col_fecha] = pd.to_datetime(df_raw[col_fecha], errors='coerce', dayfirst=True).dt.normalize()
     df_raw = df_raw.dropna(subset=[col_fecha])
+    if df_raw.empty:
+        raise ValueError("Error Crítico: No se pudieron leer las fechas. Revisa que la columna de fechas en tu Excel.")
     
     df_raw[col_calls] = [clean_num(x, 0.0) for x in df_raw[col_calls]]
 
     df_valido = df_raw[df_raw[col_calls] > 0]
-    if not df_valido.empty:
-        max_fecha_real = df_valido[col_fecha].max()
-        if pd.notna(max_fecha_real):
-            df_raw = df_raw[df_raw[col_fecha] <= max_fecha_real]
+    if df_valido.empty:
+        raise ValueError("Error Crítico: El archivo no tiene volumen de llamadas mayor a cero.")
+    
+    max_fecha_real = df_valido[col_fecha].max()
+    df_raw = df_raw[df_raw[col_fecha] <= max_fecha_real]
 
     if col_aht:
         df_raw[col_aht] = [parse_aht_to_seconds(x) for x in df_raw[col_aht]]
@@ -425,15 +443,12 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
         peso_ridge = 0.35
         factor_ajuste = 1.0
 
-        # --- MOTOR DE BACKTESTING Y APRENDIZAJE AUTÓNOMO ---
         if n >= 21:
             train_vols = vols[:-7]
             val_vols = vols[-7:]
             
-            # Evaluar Holt-Winters
             hw_val_preds = grid_search_auto_hw(train_vols, n_preds=7)
             
-            # Evaluar Ridge ML
             X_train_bt, y_train_bt = [], []
             for i in range(14, len(train_vols)):
                 feat = extraer_features_fecha(fechas_list[i], train_vols[:i], trend_idx=i)
@@ -449,7 +464,6 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
                     pred_r = predecir_ridge_ml(w_bt, m_bt, s_bt, np.array([feat]))
                     ridge_val_preds.append(max(0, pred_r))
                 
-                # Asignar Pesos Dinámicos por Precisión
                 error_hw = calc_mae(val_vols, hw_val_preds) + 1e-5
                 error_ridge = calc_mae(val_vols, ridge_val_preds) + 1e-5
                 
@@ -457,7 +471,6 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
                 peso_hw = (1.0 / error_hw) / total_inv_error
                 peso_ridge = (1.0 / error_ridge) / total_inv_error
                 
-                # Corrección de Drift Automático (El Freno Inteligente)
                 ensemble_val_preds = [(peso_hw * hw_val_preds[i] + peso_ridge * ridge_val_preds[i]) for i in range(7)]
                 sum_actual = sum(val_vols)
                 sum_pred = sum(ensemble_val_preds)
@@ -471,9 +484,7 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
             'w_ridge': peso_ridge,
             'factor_ajuste': factor_ajuste
         }
-        # --- FIN DE BACKTESTING ---
 
-        # ENTRENAMIENTO FINAL (Para proyectar al futuro con toda la data)
         hw_forecasts[camp] = grid_search_auto_hw(vols, n_preds=dias_futuros)
 
         X_data, y_data = [], []
@@ -494,7 +505,11 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
     df_filtrado = df[df['En_Ventana']].copy()
 
     max_date_hist = df_filtrado[col_fecha].max()
-    df_reciente = df_filtrado[df_filtrado[col_fecha] >= (max_date_hist - timedelta(days=60))]
+    
+    if pd.isna(max_date_hist):
+        df_reciente = df_filtrado.copy()
+    else:
+        df_reciente = df_filtrado[df_filtrado[col_fecha] >= (max_date_hist - timedelta(days=21))]
 
     perfil_intradia = df_reciente.groupby([col_camp, 'Dia_Semana_Clean', 'Inter_Clean']).agg(
         avg_calls=(col_calls, 'mean'),
@@ -509,10 +524,10 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
         key = (r[col_camp], r['Dia_Semana_Clean'], r['Inter_Clean'])
         mapa_perfil[key] = {'weight': r['weight'], 'aht': r['avg_aht']}
 
+    TODOS_LOS_INTERVALOS = [f"{int(h):02d}:{int(m):02d}" for h in range(24) for m in (0, 30)]
     intervalos_operativos_por_camp = {}
     for camp in campanas_unicas:
-        inters_camp = df_filtrado[df_filtrado[col_camp] == camp]['Inter_Clean'].unique().tolist()
-        intervalos_operativos_por_camp[camp] = sorted([i for i in inters_camp if esta_en_ventana_servicio(camp, i)])
+        intervalos_operativos_por_camp[camp] = sorted([i for i in TODOS_LOS_INTERVALOS if esta_en_ventana_servicio(camp, i)])
 
     del df_raw, df, df_diario, df_filtrado, df_reciente
     gc.collect()
@@ -540,7 +555,6 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
             w_info = pesos_campana.get(camp, {'w_hw': 0.65, 'w_ridge': 0.35, 'factor_ajuste': 1.0})
             vol_hw = hw_forecasts[camp][d] if d < len(hw_forecasts[camp]) else vol_ridge
             
-            # EL ALGORITMO AUTÓNOMO DECIDE EL PESO Y EL AJUSTE
             volumen_predicho_diario = (w_info['w_hw'] * vol_hw + w_info['w_ridge'] * vol_ridge) * w_info['factor_ajuste']
             
             historial_volumenes[camp].append(volumen_predicho_diario)
@@ -551,7 +565,13 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
                 key_p = (camp, nombre_dia, inter)
                 info_p = mapa_perfil.get(key_p, {'weight': 0.0, 'aht': 0.0})
                 calls = volumen_predicho_diario * info_p['weight']
-                aht = info_p['aht'] if (info_p['aht'] > 0 and not pd.isna(info_p['aht'])) else aht_global_campana.get(camp, 180.0)
+                calls_int = int(round(calls))
+
+                # --- EL AJUSTE ESTÉTICO PARA EL AHT EN 0 ---
+                if calls_int == 0:
+                    aht = 0.0
+                else:
+                    aht = info_p['aht'] if (info_p['aht'] > 0 and not pd.isna(info_p['aht'])) else aht_global_campana.get(camp, 180.0)
 
                 a_erlang = (calls * aht) / 1800.0 if (aht > 0 and calls > 0) else 0.0
                 req_ftes = calcular_agentes_requeridos_erlang_c(a_erlang, aht, target_time, target_sl) if calls > 0 else 0
@@ -567,7 +587,7 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
                     'Mes': str_mes,
                     'Día_Semana': nombre_dia.capitalize(),
                     'Intervalo': inter,
-                    'Llamadas': int(round(calls)),
+                    'Llamadas': calls_int,
                     'AHT': format_aht_str(aht),
                     'AHT_Segundos': int(round(aht)),
                     'Agentes_Requeridos': req_hc,
@@ -783,9 +803,10 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
 @app.route('/api/latest', methods=['GET'])
 def get_latest_forecast():
     use_cache = False
+    excel_path = buscar_archivo_excel()
     
-    if os.path.exists(CACHE_FILE) and os.path.exists(EXCEL_DEFAULT):
-        if os.path.getmtime(CACHE_FILE) >= os.path.getmtime(EXCEL_DEFAULT):
+    if os.path.exists(CACHE_FILE) and excel_path:
+        if os.path.getmtime(CACHE_FILE) >= os.path.getmtime(excel_path):
             use_cache = True
         else:
             try: os.remove(CACHE_FILE)
@@ -800,14 +821,14 @@ def get_latest_forecast():
         except Exception as e:
             pass
             
-    if os.path.exists(EXCEL_DEFAULT):
+    if excel_path:
         try:
-            data = procesar_archivo_excel(EXCEL_DEFAULT)
+            data = procesar_archivo_excel(excel_path)
             return jsonify(data), 200
         except Exception as e:
-            return jsonify({'error': f'Error procesando historico.xlsx: {str(e)}'}), 500
+            return jsonify({'error': f'Error procesando Excel: {str(e)}'}), 500
             
-    return jsonify({'error': 'No se encontró historico.xlsx en el servidor.'}), 404
+    return jsonify({'error': 'No se encontró ningún archivo Excel en el servidor.'}), 404
 
 @app.route('/api/optimize-schedules', methods=['POST'])
 def api_optimize_schedules():
@@ -853,26 +874,20 @@ def process_data():
     merma = float(clean_num(request.form.get('merma'), 20.0)) / 100.0
     dias_futuros = int(clean_num(request.form.get('dias'), 30))
 
-    if 'file' in request.files and request.files['file'].filename != '':
-        file = request.files['file']
-        file.save(EXCEL_DEFAULT)
-        file_source = EXCEL_DEFAULT
-        if os.path.exists(CACHE_FILE):
-            try: os.remove(CACHE_FILE)
-            except: pass
-    elif os.path.exists(EXCEL_DEFAULT):
-        file_source = EXCEL_DEFAULT
-    else:
-        return jsonify({'error': 'No se recibió archivo ni existe historico.xlsx.'}), 400
+    excel_path = buscar_archivo_excel()
+
+    if not excel_path:
+        return jsonify({'error': 'No se encontró ningún archivo Excel (.xlsx) en el repositorio.'}), 400
 
     try:
-        data_processed = procesar_archivo_excel(file_source, target_sl, target_time, merma, dias_futuros)
+        data_processed = procesar_archivo_excel(excel_path, target_sl, target_time, merma, dias_futuros)
         gc.collect()
         return jsonify(data_processed)
     except Exception as e:
         gc.collect()
-        return jsonify({'error': f"Error en procesamiento: {str(e)}"}), 500
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
