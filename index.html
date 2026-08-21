@@ -111,7 +111,7 @@
             </div>
         </div>
 
-        <!-- BOTÓN DE RESCATE (Solo aparece cuando el panel se oculta) -->
+        <!-- BOTÓN DE RESCATE -->
         <div id="containerShowSidebar" class="z-10 ml-auto hidden">
             <button onclick="toggleSidebar()" class="bg-slate-800/50 hover:bg-slate-700/80 text-slate-300 border border-slate-600/50 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 font-mono shadow-lg">
                 <span class="text-cyan-400">▶</span> Mostrar Parámetros
@@ -123,7 +123,6 @@
 
         <aside id="panelControl" class="col-span-12 lg:col-span-3 glass-panel p-6 rounded-2xl space-y-6 h-fit relative transition-all duration-300">
             
-            <!-- BOTON OCULTAR (DENTRO DEL PANEL) -->
             <button onclick="toggleSidebar()" class="w-full bg-slate-800/50 hover:bg-slate-700/80 text-slate-300 border border-slate-600/50 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 font-mono shadow-sm">
                 <span class="text-cyan-400">◀</span> Ocultar Parámetros
             </button>
@@ -295,9 +294,9 @@
                     <div>
                         <div class="flex items-center gap-2">
                             <span class="text-amber-400 text-base">🧠</span>
-                            <h3 id="optModuleTitle" class="text-xs font-black text-slate-200 uppercase tracking-widest">Optimización de Horarios (Sugerencia)</h3>
+                            <h3 id="optModuleTitle" class="text-xs font-black text-slate-200 uppercase tracking-widest">Optimización de Horarios (Roster Semanal)</h3>
                         </div>
-                        <p id="subtHeadcountMod" class="text-xs text-slate-400 font-medium mt-0.5">Malla de turnos requerida para cubrir la curva de demanda</p>
+                        <p id="subtHeadcountMod" class="text-xs text-slate-400 font-medium mt-0.5">Distribución de días de descanso para cubrir la malla requerida</p>
                     </div>
                     <button onclick="exportarTurnosCSV()" class="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold py-2 px-4 rounded-xl transition duration-200 flex items-center gap-2 font-mono">
                         <span>📥</span> Exportar Malla Sugerida
@@ -327,20 +326,24 @@
                     <canvas id="optChart"></canvas>
                 </div>
 
-                <div class="overflow-x-auto border border-slate-800/80 rounded-xl">
-                    <table class="w-full text-left text-xs text-slate-300">
-                        <thead class="bg-brand-surface text-slate-400 font-bold uppercase tracking-wider text-[9px] sticky top-0 border-b border-slate-800">
+                <!-- TABLA ROSTER SEMANAL CON LÍMITE DE ALTURA Y SCROLL -->
+                <div class="overflow-x-auto overflow-y-auto max-h-[350px] border border-slate-700/60 rounded-xl shadow-lg relative">
+                    <table class="w-full text-center text-xs text-slate-300">
+                        <thead class="bg-[#0D1322] text-slate-400 font-bold uppercase tracking-widest text-[10px] sticky top-0 border-b border-slate-700/60 z-10">
                             <tr>
-                                <th class="py-3 px-4">Horario de Entrada</th>
-                                <th class="py-3 px-4">Horario de Salida</th>
-                                <th class="py-3 px-4">Duración</th>
-                                <th class="py-3 px-4 text-amber-400">HC Requerido</th>
-                                <th class="py-3 px-4">% de la Plantilla</th>
+                                <th class="py-4 px-4 text-amber-400 border-r border-slate-700/60 w-16">HC</th>
+                                <th class="py-4 px-2">Lunes</th>
+                                <th class="py-4 px-2">Martes</th>
+                                <th class="py-4 px-2">Miércoles</th>
+                                <th class="py-4 px-2">Jueves</th>
+                                <th class="py-4 px-2">Viernes</th>
+                                <th class="py-4 px-2">Sábado</th>
+                                <th class="py-4 px-2">Domingo</th>
                             </tr>
                         </thead>
-                        <tbody id="optShiftsTableBody" class="divide-y divide-slate-800/50 font-mono-num text-[11px]">
+                        <tbody id="optShiftsTableBody" class="divide-y divide-slate-700/50 font-mono-num text-[11px]">
                             <tr>
-                                <td colspan="5" class="text-center py-6 text-slate-500 font-sans">Selecciona filtros...</td>
+                                <td colspan="8" class="text-center py-6 text-slate-500 font-sans">Selecciona filtros...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -419,26 +422,22 @@
             return (mesesMap[mesA] || 0) - (mesesMap[mesB] || 0);
         }
 
-        // --- LÓGICA PARA OCULTAR/MOSTRAR PANEL IZQUIERDO ---
         function toggleSidebar() {
             const aside = document.getElementById('panelControl');
             const main = document.getElementById('dashboardMain');
             const containerShow = document.getElementById('containerShowSidebar');
 
             if (isSidebarVisible) {
-                // Ocultar panel
                 if (aside) aside.style.display = 'none';
                 if (main) {
                     main.classList.remove('lg:col-span-9');
                     main.classList.add('lg:col-span-12');
                 }
-                // Solo mostrar botón "Mostrar" si no estamos en vista operaciones
                 if (containerShow && currentMode !== 'ops' && currentMode !== 'operaciones') {
                     containerShow.classList.remove('hidden');
                 }
                 isSidebarVisible = false;
             } else {
-                // Mostrar panel
                 if (aside) aside.style.display = 'block';
                 if (main) {
                     main.classList.remove('lg:col-span-12');
@@ -448,7 +447,6 @@
                 isSidebarVisible = true;
             }
             
-            // Reajustar tamaño de gráficas
             setTimeout(() => { 
                 if (optChartInstance) optChartInstance.resize(); 
                 if (gapChartInstance) gapChartInstance.resize(); 
@@ -506,7 +504,7 @@
             if (mode === 'ops' || mode === 'operaciones') {
                 if (aside) aside.style.display = 'none';
                 if (modOpt) modOpt.style.display = 'none';
-                if (containerShow) containerShow.classList.add('hidden'); // Nunca mostrar en ops
+                if (containerShow) containerShow.classList.add('hidden'); 
                 
                 if (main) {
                     main.classList.remove('lg:col-span-9');
@@ -519,7 +517,6 @@
                 if (modOpt) modOpt.style.display = 'block';
                 if (tag) tag.classList.add('hidden');
                 
-                // Mantener estado del toggle actual
                 if (isSidebarVisible) {
                     if (aside) aside.style.display = 'block';
                     if (containerShow) containerShow.classList.add('hidden');
@@ -833,7 +830,6 @@
                 return matchMes && matchCamp && matchFecha && matchInter;
             });
 
-            // LÓGICA DE ALERTA DE REFORECAST
             const reforecastAlert = document.getElementById('reforecastAlert');
             const reforecastMsg = document.getElementById('reforecastMsg');
             let campanasModificadas = {};
@@ -1163,22 +1159,59 @@
                 globalTurnosOptimos.sort((a, b) => parseMinStr(a.horario_entrada) - parseMinStr(b.horario_entrada));
 
                 if (globalTurnosOptimos.length === 0) {
-                    optTbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-slate-500">No se requieren agentes dentro de la ventana de servicio.</td></tr>';
+                    optTbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-slate-500 font-sans">No se requieren agentes dentro de la ventana de servicio.</td></tr>';
                 } else {
+                    
+                    let offsetDiurno = 0;
+                    let offsetNocturno = 0;
+
                     globalTurnosOptimos.forEach(t => {
-                        const pct = hcRequeridoDisplay > 0 ? ((t.nomina_a_contratar / hcRequeridoDisplay) * 100).toFixed(1) : 0;
-                        const tr = document.createElement('tr');
-                        tr.className = 'hover:bg-slate-800/40 transition-colors';
-                        tr.innerHTML = `
-                            <td class="py-2.5 px-4 font-bold text-amber-400 flex items-center gap-2">
-                                <span>🕒</span> ${t.horario_entrada}
-                            </td>
-                            <td class="py-2.5 px-4 text-slate-300 font-bold">${t.horario_salida}</td>
-                            <td class="py-2.5 px-4 text-slate-400">${t.duracion}</td>
-                            <td class="py-2.5 px-4 text-amber-300 font-black text-sm">${t.nomina_a_contratar}</td>
-                            <td class="py-2.5 px-4 text-cyan-400 font-bold">${pct}%</td>
-                        `;
-                        optTbody.appendChild(tr);
+                        const hcTurno = t.nomina_a_contratar;
+                        if (hcTurno <= 0) return;
+                        
+                        const shiftStr = `${t.horario_entrada} - ${t.horario_salida}`;
+                        const esTurnoNocturno = t.duracion.includes('Nocturno');
+
+                        let distribucion = [0, 0, 0, 0, 0, 0, 0];
+                        
+                        for (let i = 0; i < hcTurno; i++) {
+                            if (esTurnoNocturno) {
+                                distribucion[offsetNocturno % 7]++;
+                                offsetNocturno++;
+                            } else {
+                                distribucion[offsetDiurno % 7]++;
+                                offsetDiurno++;
+                            }
+                        }
+
+                        for (let i = 0; i < 7; i++) {
+                            const hcDescanso = distribucion[i];
+                            if (hcDescanso > 0) {
+                                const tr = document.createElement('tr');
+                                tr.className = 'hover:bg-slate-800/60 transition-colors border-b border-slate-700/50';
+                                
+                                let htmlRow = `<td class="py-3.5 px-4 font-black text-amber-400 text-base border-r border-slate-700/60 bg-slate-800/20">${hcDescanso}</td>`;
+                                
+                                for (let d = 0; d < 7; d++) {
+                                    if (esTurnoNocturno) { 
+                                        if (d === i || d === (i + 1) % 7) {
+                                            htmlRow += `<td class="py-3.5 px-2 text-rose-400 font-bold text-[11px] tracking-wide">Descanso</td>`;
+                                        } else {
+                                            htmlRow += `<td class="py-3.5 px-2 text-slate-300 font-mono-num text-[11px] tracking-widest">${shiftStr}</td>`;
+                                        }
+                                    } else { 
+                                        if (d === i) {
+                                            htmlRow += `<td class="py-3.5 px-2 text-rose-400 font-bold text-[11px] tracking-wide">Descanso</td>`;
+                                        } else {
+                                            htmlRow += `<td class="py-3.5 px-2 text-slate-300 font-mono-num text-[11px] tracking-widest">${shiftStr}</td>`;
+                                        }
+                                    }
+                                }
+                                
+                                tr.innerHTML = htmlRow;
+                                optTbody.appendChild(tr);
+                            }
+                        }
                     });
                 }
 
@@ -1259,16 +1292,55 @@
                 alert("No hay turnos optimizados para exportar.");
                 return;
             }
-            const headers = ["Horario_Entrada", "Horario_Salida", "Duracion", "HC_Requerido"];
+            
+            const headers = ["HC", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
             const csvRows = [headers.join(",")];
+            
+            let offsetDiurno = 0;
+            let offsetNocturno = 0;
+
             globalTurnosOptimos.forEach(t => {
-                csvRows.push([t.horario_entrada, t.horario_salida, t.duracion, t.nomina_a_contratar].join(","));
+                const hcTurno = t.nomina_a_contratar;
+                if (hcTurno <= 0) return;
+                
+                const shiftStr = `${t.horario_entrada} - ${t.horario_salida}`;
+                const esTurnoNocturno = t.duracion.includes('Nocturno');
+
+                let distribucion = [0, 0, 0, 0, 0, 0, 0];
+                
+                for (let i = 0; i < hcTurno; i++) {
+                    if (esTurnoNocturno) {
+                        distribucion[offsetNocturno % 7]++;
+                        offsetNocturno++;
+                    } else {
+                        distribucion[offsetDiurno % 7]++;
+                        offsetDiurno++;
+                    }
+                }
+                
+                for (let i = 0; i < 7; i++) {
+                    const hcDescanso = distribucion[i];
+                    if (hcDescanso > 0) {
+                        let row = [hcDescanso];
+                        for (let d = 0; d < 7; d++) {
+                            if (esTurnoNocturno) {
+                                if (d === i || d === (i+1)%7) row.push("Descanso");
+                                else row.push(shiftStr);
+                            } else {
+                                if (d === i) row.push("Descanso");
+                                else row.push(shiftStr);
+                            }
+                        }
+                        csvRows.push(row.join(","));
+                    }
+                }
             });
+
             const blob = new Blob([csvRows.join("\n")], { type: 'text/csv' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.setAttribute('href', url);
-            a.setAttribute('download', `Malla_Turnos_Optimos_HC_${new Date().toISOString().slice(0,10)}.csv`);
+            a.setAttribute('download', `Roster_Semanal_Sugerido_${new Date().toISOString().slice(0,10)}.csv`);
             a.click();
         }
 
