@@ -567,7 +567,6 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
                 calls = volumen_predicho_diario * info_p['weight']
                 calls_int = int(round(calls))
 
-                # --- EL AJUSTE ESTÉTICO PARA EL AHT EN 0 ---
                 if calls_int == 0:
                     aht = 0.0
                 else:
@@ -675,25 +674,16 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
     duracion_minutos = int(round(duracion_jornada * 60))
     label_jornada_diurna = f"{duracion_jornada:.1f} hrs".replace('.0', '')
 
-    min_in_array = [parse_time_str(x) for x in intervalos if parse_time_str(x) is not None]
-    if len(min_in_array) > 0:
-        min_diurno_inicio = min(min_in_array)
-        min_diurno_limite = max(min_in_array) + 30
-    else:
-        min_diurno_inicio = 7 * 60    
-        min_diurno_limite = 22 * 60   
-    
-    min_entrada_maxima = min_diurno_limite - duracion_minutos
-
+    # --- NUEVO CANDADO DE LÍMITE DE HORARIOS (07:00 a 22:00) ---
     valid_starts = []
-    is_24_7 = (m >= 47) 
-    
     for j in range(m):
-        if is_24_7:
-            valid_starts.append(j)
-        else:
-            if j + SHIFT_BLOCKS <= m:
+        min_in_val = parse_time_str(intervalos[j])
+        if min_in_val is not None:
+            min_out_val = min_in_val + duracion_minutos
+            # Todo turno dinámico diurno debe comenzar >= 07:00 y terminar <= 22:00
+            if min_in_val >= (7 * 60) and min_out_val <= (22 * 60):
                 valid_starts.append(j)
+    # ----------------------------------------------------------
 
     def calc_current_global_sl(current_cob):
         if tot_llamadas <= 0: return 100.0
@@ -890,4 +880,3 @@ def process_data():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-
