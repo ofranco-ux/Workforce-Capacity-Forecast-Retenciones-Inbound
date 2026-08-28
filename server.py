@@ -462,13 +462,29 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
     SHIFT_BLOCKS = int(round(float(duracion_jornada) * 2))
     label_jornada_diurna = f"{float(duracion_jornada):.1f} hrs".replace('.0', '')
 
+    # Determinar límites dinámicos de la ventana de servicio basados en las campañas seleccionadas
+    limite_inicio = 420  # Default 07:00
+    limite_fin = 1320    # Default 22:00
+
+    if campanas_activas:
+        found_starts = []
+        found_ends = []
+        for c in campanas_activas:
+            c_key = str(c).strip().lower()
+            for key, ventana in VENTANAS_SERVICIO.items():
+                if key in c_key or c_key in key:
+                    found_starts.append(ventana['inicio'])
+                    found_ends.append(ventana['fin'])
+        if found_starts and found_ends:
+            limite_inicio = min(found_starts)
+            limite_fin = max(found_ends)
+
     valid_starts = []
     for j in range(m):
         t_min = parse_time_str(intervalos[j])
         if t_min is not None:
-            # Restricción diurna: El turno debe empezar a las 07:00 o después (>= 420 mins) 
-            # y terminar a las 22:00 o antes (<= 1320 mins)
-            if t_min >= 420 and (t_min + duracion_minutos) <= 1320:
+            # Ahora la restricción verifica dinámicamente contra los límites de las campañas filtradas
+            if t_min >= limite_inicio and (t_min + duracion_minutos) <= limite_fin:
                 valid_starts.append(j)
 
     def calc_current_global_sl(current_cob):
