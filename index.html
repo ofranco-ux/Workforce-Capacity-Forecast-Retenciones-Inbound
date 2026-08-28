@@ -421,6 +421,7 @@
         let optChartInstance = null;
         let gapChartInstance = null; 
         let globalTurnosOptimos = [];
+        let globalDiasOrdenados = [0, 1, 2, 3, 4, 5, 6]; // NUEVA VARIABLE AÑADIDA
         
         let allMesesOptions = [];
         let allSemanasOptions = [];
@@ -1288,6 +1289,21 @@
 
                 globalTurnosOptimos.sort((a, b) => parseMinStr(a.horario_entrada) - parseMinStr(b.horario_entrada));
 
+                // --- NUEVO: CÁLCULO DE DEMANDA POR DÍA DE LA SEMANA ---
+                const mapDiasStr = { "Lunes": 0, "Martes": 1, "Miércoles": 2, "Jueves": 3, "Viernes": 4, "Sábado": 5, "Domingo": 6, "Miercoles": 2, "Sabado": 5 };
+                let llamadasPorDia = [0, 0, 0, 0, 0, 0, 0];
+
+                dfFiltered.forEach(r => {
+                    let dia = getProp(r, ['Día_Semana', 'Dia_Semana'], '');
+                    if (mapDiasStr[dia] !== undefined) {
+                        llamadasPorDia[mapDiasStr[dia]] += (Number(getProp(r, ['Llamadas', 'Recibidas'], 0)) || 0);
+                    }
+                });
+
+                // Ordena los índices (0=Lunes a 6=Domingo) del día con MENOS llamadas al de MÁS llamadas
+                globalDiasOrdenados = [0, 1, 2, 3, 4, 5, 6].sort((a, b) => llamadasPorDia[a] - llamadasPorDia[b]);
+                // -----------------------------------------------------
+
                 if (globalTurnosOptimos.length === 0) {
                     optTbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-slate-500 font-sans font-medium">No se requieren agentes dentro de la ventana de servicio.</td></tr>';
                 } else {
@@ -1304,13 +1320,17 @@
                         let distribucion = [0, 0, 0, 0, 0, 0, 0];
                         
                         for (let i = 0; i < hcTurno; i++) {
+                            let indexPrioridad;
                             if (esTurnoNocturno) {
-                                distribucion[offsetNocturno % 7]++;
+                                indexPrioridad = offsetNocturno % 7;
                                 offsetNocturno++;
                             } else {
-                                distribucion[offsetDiurno % 7]++;
+                                indexPrioridad = offsetDiurno % 7;
                                 offsetDiurno++;
                             }
+                            
+                            let diaValle = globalDiasOrdenados[indexPrioridad];
+                            distribucion[diaValle]++;
                         }
 
                         for (let i = 0; i < 7; i++) {
@@ -1434,13 +1454,17 @@
                 let distribucion = [0, 0, 0, 0, 0, 0, 0];
                 
                 for (let i = 0; i < hcTurno; i++) {
+                    let indexPrioridad;
                     if (esTurnoNocturno) {
-                        distribucion[offsetNocturno % 7]++;
+                        indexPrioridad = offsetNocturno % 7;
                         offsetNocturno++;
                     } else {
-                        distribucion[offsetDiurno % 7]++;
+                        indexPrioridad = offsetDiurno % 7;
                         offsetDiurno++;
                     }
+                    
+                    let diaValle = globalDiasOrdenados[indexPrioridad];
+                    distribucion[diaValle]++;
                 }
                 
                 for (let i = 0; i < 7; i++) {
