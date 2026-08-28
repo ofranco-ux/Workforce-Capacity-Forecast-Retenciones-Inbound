@@ -647,7 +647,7 @@
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 actualizarGrafica();
-                syncStateToBackend();
+                // syncStateToBackend(); <-- Removido para que operaciones mantenga sus datos hasta dar clic en Run Plan
             }, 400); 
         }
 
@@ -695,7 +695,7 @@
         }
 
         async function procesarWFM() {
-            await syncStateToBackend();
+            await syncStateToBackend(); // Aquí sí guardamos al backend para que operaciones actualice
 
             const btn = document.getElementById('btnProcesar');
             btn.disabled = true;
@@ -748,11 +748,19 @@
                 selectedIntervalos = new Set(savedFiltersFromBackend.intervalos && savedFiltersFromBackend.intervalos.length > 0 ? savedFiltersFromBackend.intervalos : allIntervalosOptions);
                 savedFiltersFromBackend = null; 
             } else {
-                selectedMeses = new Set(allMesesOptions);
-                selectedSemanas = new Set(allSemanasOptions);
-                selectedCampanas = new Set(allCampanasOptions);
-                selectedFechas = new Set(allFechasOptions);
-                selectedIntervalos = new Set(allIntervalosOptions);
+                // Conservar selecciones actuales si existen, filtrando datos que ya no existan en el nuevo forecast
+                selectedMeses = selectedMeses.size > 0 ? new Set([...selectedMeses].filter(x => allMesesOptions.includes(x))) : new Set(allMesesOptions);
+                selectedSemanas = selectedSemanas.size > 0 ? new Set([...selectedSemanas].filter(x => allSemanasOptions.includes(x))) : new Set(allSemanasOptions);
+                selectedCampanas = selectedCampanas.size > 0 ? new Set([...selectedCampanas].filter(x => allCampanasOptions.includes(x))) : new Set(allCampanasOptions);
+                selectedFechas = selectedFechas.size > 0 ? new Set([...selectedFechas].filter(x => allFechasOptions.includes(x))) : new Set(allFechasOptions);
+                selectedIntervalos = selectedIntervalos.size > 0 ? new Set([...selectedIntervalos].filter(x => allIntervalosOptions.includes(x))) : new Set(allIntervalosOptions);
+                
+                // Si la retención dejó los sets vacíos, reiniciamos a todas las opciones disponibles
+                if(selectedMeses.size === 0) selectedMeses = new Set(allMesesOptions);
+                if(selectedSemanas.size === 0) selectedSemanas = new Set(allSemanasOptions);
+                if(selectedCampanas.size === 0) selectedCampanas = new Set(allCampanasOptions);
+                if(selectedFechas.size === 0) selectedFechas = new Set(allFechasOptions);
+                if(selectedIntervalos.size === 0) selectedIntervalos = new Set(allIntervalosOptions);
             }
 
             renderMenuOptions('Mes', allMesesOptions, selectedMeses);
