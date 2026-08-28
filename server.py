@@ -541,6 +541,7 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
 
 @app.route('/api/latest', methods=['GET'])
 def get_latest_forecast():
+    # 1. Intentar cargar los datos guardados
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, 'r', encoding='utf-8') as f:
@@ -551,6 +552,29 @@ def get_latest_forecast():
             print(f"Error leyendo caché: {e}")
             pass
             
+    # 2. AUTO-RECOVERY: Si el archivo se borró por reinicio del servidor, recalcular automáticamente
+    excel_path = buscar_archivo_excel()
+    if excel_path:
+        try:
+            # Valores por defecto en caso de que la config también se haya borrado
+            sl, tt, merma, dias = 80.0, 20.0, 0.30, 130
+            if os.path.exists(CONFIG_FILE):
+                try:
+                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                        cfg = json.load(f)
+                        sl = float(cfg.get('targetSl', 80.0))
+                        tt = float(cfg.get('targetTime', 20.0))
+                        merma = float(cfg.get('merma', 30.0)) / 100.0
+                except: pass
+            
+            # Forzamos el procesamiento para recuperar la data
+            data = procesar_archivo_excel(excel_path, target_sl=sl, target_time=tt, merma=merma, dias_futuros=dias)
+            gc.collect()
+            return jsonify(data), 200
+        except Exception as e:
+            print(f"Error en auto-recovery: {e}")
+            pass
+
     return jsonify([]), 200
 
 @app.route('/api/optimize-schedules', methods=['POST'])
