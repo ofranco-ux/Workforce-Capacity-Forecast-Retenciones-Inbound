@@ -422,7 +422,7 @@
         let gapChartInstance = null; 
         let globalTurnosOptimos = [];
         let globalDiasOrdenados = [0, 1, 2, 3, 4, 5, 6]; 
-        let globalLlamadasPorDia = [0, 0, 0, 0, 0, 0, 0]; // NUEVA VARIABLE AÑADIDA
+        let globalLlamadasPorDia = [0, 0, 0, 0, 0, 0, 0];
         
         let allMesesOptions = [];
         let allSemanasOptions = [];
@@ -440,6 +440,7 @@
         let totalesFiltros = { M: 0, S: 0, C: 0, F: 0, I: 0 }; 
         let currentMode = 'wfm';
         let isSidebarVisible = true; 
+        let savedFiltersFromBackend = null;
 
         const mesesMap = {
             "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
@@ -524,14 +525,15 @@
                     if(config.duracionJornada) document.getElementById('duracionJornada').value = config.duracionJornada;
                     if(config.chkNocturno !== undefined) document.getElementById('chkNocturno').checked = config.chkNocturno;
                     if(config.chkPicos !== undefined) document.getElementById('chkPicos').checked = config.chkPicos;
+                    if(config.filtros) savedFiltersFromBackend = config.filtros;
                 }
             } catch (e) {
                 console.log("No hay config WFM previa, usando valores default.");
             }
         }
 
-        async function saveWFMConfig() {
-            if(currentMode === 'ops') return; 
+        async function syncStateToBackend() {
+            if(currentMode === 'ops' || currentMode === 'operaciones') return; 
             
             const config = {
                 targetSl: document.getElementById('targetSl').value,
@@ -539,7 +541,14 @@
                 merma: document.getElementById('merma').value,
                 duracionJornada: document.getElementById('duracionJornada').value,
                 chkNocturno: document.getElementById('chkNocturno').checked,
-                chkPicos: document.getElementById('chkPicos').checked
+                chkPicos: document.getElementById('chkPicos').checked,
+                filtros: {
+                    meses: Array.from(selectedMeses),
+                    semanas: Array.from(selectedSemanas),
+                    campanas: Array.from(selectedCampanas),
+                    fechas: Array.from(selectedFechas),
+                    intervalos: Array.from(selectedIntervalos)
+                }
             };
 
             try {
@@ -548,9 +557,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
                 });
-            } catch (e) {
-                console.log("No se pudo guardar la config de WFM.");
-            }
+            } catch (e) {}
         }
 
         function switchMode(mode) {
@@ -640,6 +647,7 @@
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 actualizarGrafica();
+                syncStateToBackend();
             }, 400); 
         }
 
@@ -648,9 +656,7 @@
             const mode = urlParams.get('mode') || urlParams.get('role') || 'wfm';
             switchMode(mode);
 
-            if(mode === 'ops') {
-                await fetchWFMConfig();
-            }
+            await fetchWFMConfig();
 
             try {
                 const response = await fetch('/api/latest?t=' + new Date().getTime());
@@ -689,7 +695,7 @@
         }
 
         async function procesarWFM() {
-            await saveWFMConfig();
+            await syncStateToBackend();
 
             const btn = document.getElementById('btnProcesar');
             btn.disabled = true;
@@ -729,23 +735,30 @@
 
         function inicializarFiltrosMultiples() {
             allMesesOptions = [...new Set(globalData.map(i => String(getProp(i, ['Mes'], ''))))].filter(Boolean).sort(ordenarMesesCronologicamente);
-            selectedMeses = new Set(allMesesOptions);
-            renderMenuOptions('Mes', allMesesOptions, selectedMeses);
-
             allSemanasOptions = [...new Set(globalData.map(i => getWeekNumber(getProp(i, ['Fecha'], ''))))].filter(Boolean).sort();
-            selectedSemanas = new Set(allSemanasOptions);
-            renderMenuOptions('Semana', allSemanasOptions, selectedSemanas);
-
             allCampanasOptions = [...new Set(globalData.map(i => String(getProp(i, ['Campaña', 'Campana'], 'General'))))].filter(Boolean).sort();
-            selectedCampanas = new Set(allCampanasOptions);
-            renderMenuOptions('Campana', allCampanasOptions, selectedCampanas);
-
             allFechasOptions = [...new Set(globalData.map(i => String(getProp(i, ['Fecha'], '')).split(' ')[0].split('T')[0]))].filter(Boolean).sort();
-            selectedFechas = new Set(allFechasOptions);
-            renderMenuOptions('Fecha', allFechasOptions, selectedFechas);
-
             allIntervalosOptions = [...new Set(globalData.map(i => String(getProp(i, ['Intervalo'], '00:00'))))].filter(Boolean).sort();
-            selectedIntervalos = new Set(allIntervalosOptions);
+
+            if (savedFiltersFromBackend) {
+                selectedMeses = new Set(savedFiltersFromBackend.meses && savedFiltersFromBackend.meses.length > 0 ? savedFiltersFromBackend.meses : allMesesOptions);
+                selectedSemanas = new Set(savedFiltersFromBackend.semanas && savedFiltersFromBackend.semanas.length > 0 ? savedFiltersFromBackend.semanas : allSemanasOptions);
+                selectedCampanas = new Set(savedFiltersFromBackend.campanas && savedFiltersFromBackend.campanas.length > 0 ? savedFiltersFromBackend.campanas : allCampanasOptions);
+                selectedFechas = new Set(savedFiltersFromBackend.fechas && savedFiltersFromBackend.fechas.length > 0 ? savedFiltersFromBackend.fechas : allFechasOptions);
+                selectedIntervalos = new Set(savedFiltersFromBackend.intervalos && savedFiltersFromBackend.intervalos.length > 0 ? savedFiltersFromBackend.intervalos : allIntervalosOptions);
+                savedFiltersFromBackend = null; 
+            } else {
+                selectedMeses = new Set(allMesesOptions);
+                selectedSemanas = new Set(allSemanasOptions);
+                selectedCampanas = new Set(allCampanasOptions);
+                selectedFechas = new Set(allFechasOptions);
+                selectedIntervalos = new Set(allIntervalosOptions);
+            }
+
+            renderMenuOptions('Mes', allMesesOptions, selectedMeses);
+            renderMenuOptions('Semana', allSemanasOptions, selectedSemanas);
+            renderMenuOptions('Campana', allCampanasOptions, selectedCampanas);
+            renderMenuOptions('Fecha', allFechasOptions, selectedFechas);
             renderMenuOptions('Intervalo', allIntervalosOptions, selectedIntervalos);
             
             calcularTotalesFiltros();
@@ -1286,7 +1299,6 @@
 
                 globalTurnosOptimos.sort((a, b) => parseMinStr(a.horario_entrada) - parseMinStr(b.horario_entrada));
 
-                // --- NUEVO: CÁLCULO DE DEMANDA POR DÍA DE LA SEMANA ---
                 const mapDiasStr = { "Lunes": 0, "Martes": 1, "Miércoles": 2, "Jueves": 3, "Viernes": 4, "Sábado": 5, "Domingo": 6, "Miercoles": 2, "Sabado": 5 };
                 globalLlamadasPorDia = [0, 0, 0, 0, 0, 0, 0];
 
@@ -1298,7 +1310,6 @@
                 });
 
                 globalDiasOrdenados = [0, 1, 2, 3, 4, 5, 6].sort((a, b) => globalLlamadasPorDia[a] - globalLlamadasPorDia[b]);
-                // -----------------------------------------------------
 
                 if (globalTurnosOptimos.length === 0) {
                     optTbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-slate-500 font-sans font-medium">No se requieren agentes dentro de la ventana de servicio.</td></tr>';
@@ -1310,7 +1321,6 @@
                         const shiftStr = `${t.horario_entrada} - ${t.horario_salida}`;
                         const esTurnoNocturno = t.duracion.includes('Nocturno');
 
-                        // --- NUEVO ALGORITMO: REPARTO POR RATIO ---
                         let distribucion = [0, 0, 0, 0, 0, 0, 0];
                         let workingAgents = [hcTurno, hcTurno, hcTurno, hcTurno, hcTurno, hcTurno, hcTurno];
 
@@ -1331,11 +1341,9 @@
                             distribucion[diaElegido]++;
                             workingAgents[diaElegido]--;
                             if (esTurnoNocturno) {
-                                // En nocturno hay dos descansos, restamos un agente extra
                                 workingAgents[(diaElegido + 1) % 7]--;
                             }
                         }
-                        // ------------------------------------------
 
                         for (let i = 0; i < 7; i++) {
                             const hcDescanso = distribucion[i];
@@ -1452,7 +1460,6 @@
                 const shiftStr = `${t.horario_entrada} - ${t.horario_salida}`;
                 const esTurnoNocturno = t.duracion.includes('Nocturno');
 
-                // --- NUEVO ALGORITMO: REPARTO POR RATIO (EXPORTACIÓN) ---
                 let distribucion = [0, 0, 0, 0, 0, 0, 0];
                 let workingAgents = [hcTurno, hcTurno, hcTurno, hcTurno, hcTurno, hcTurno, hcTurno];
 
@@ -1476,7 +1483,6 @@
                         workingAgents[(diaElegido + 1) % 7]--;
                     }
                 }
-                // -------------------------------------------------------
                 
                 for (let i = 0; i < 7; i++) {
                     const hcDescanso = distribucion[i];
