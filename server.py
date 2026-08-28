@@ -320,11 +320,9 @@ def procesar_archivo_excel(file_source, target_sl=80.0, target_time=20.0, merma=
             vol_final = vol_base * monthly_trend * quincena_factor
             
             # === CANDADO ANTI-ZOMBIES ===
-            # Si el volumen promedio histórico es menor a 1 llamada diaria, la campaña está muerta. No proyectar volumen.
             if sub[col_calls].mean() < 1.0:
                 vol_final = 0.0
                 
-            # Si no está muerta, el piso real es 0 (no forzar artificialmente a 10 llamadas)
             preds_finales.append(max(0.0, vol_final))
 
         predicciones_futuras[camp] = preds_finales
@@ -464,7 +462,14 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
     SHIFT_BLOCKS = int(round(float(duracion_jornada) * 2))
     label_jornada_diurna = f"{float(duracion_jornada):.1f} hrs".replace('.0', '')
 
-    valid_starts = [j for j in range(m) if parse_time_str(intervalos[j]) is not None]
+    valid_starts = []
+    for j in range(m):
+        t_min = parse_time_str(intervalos[j])
+        if t_min is not None:
+            # Restricción diurna: El turno debe empezar a las 07:00 o después (>= 420 mins) 
+            # y terminar a las 22:00 o antes (<= 1320 mins)
+            if t_min >= 420 and (t_min + duracion_minutos) <= 1320:
+                valid_starts.append(j)
 
     def calc_current_global_sl(current_cob):
         if tot_llamadas <= 0: return 100.0
@@ -520,7 +525,6 @@ def resolver_turnos_optimos(intervalos, campanas_activas, llamadas_vec=None, aht
 
 @app.route('/api/latest', methods=['GET'])
 def get_latest_forecast():
-    # 1. Simplemente intentamos leer la caché existente sin importar la fecha del Excel
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, 'r', encoding='utf-8') as f:
@@ -531,8 +535,6 @@ def get_latest_forecast():
             print(f"Error leyendo caché: {e}")
             pass
             
-    # 2. Si no hay caché, no bloqueamos el servidor. Le decimos al front que está vacío.
-    # El usuario tendrá que dar clic en "RUN PLAN" para generarla.
     return jsonify([]), 200
 
 @app.route('/api/optimize-schedules', methods=['POST'])
