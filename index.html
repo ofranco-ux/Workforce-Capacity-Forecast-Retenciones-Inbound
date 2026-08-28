@@ -421,7 +421,8 @@
         let optChartInstance = null;
         let gapChartInstance = null; 
         let globalTurnosOptimos = [];
-        let globalDiasOrdenados = [0, 1, 2, 3, 4, 5, 6]; // NUEVA VARIABLE AÑADIDA
+        let globalDiasOrdenados = [0, 1, 2, 3, 4, 5, 6]; 
+        let globalLlamadasPorDia = [0, 0, 0, 0, 0, 0, 0]; // NUEVA VARIABLE AÑADIDA
         
         let allMesesOptions = [];
         let allSemanasOptions = [];
@@ -1022,8 +1023,6 @@
                 mapIntervaloFecha[key].push(r);
             });
 
-            // === FIX DEFINITIVO: PROMEDIO POR DÍA DE LA SEMANA REAL ===
-            // Aquí el sistema calculará exactamente cuánto requerimos en una semana representativa del periodo filtrado.
             const numDiasPeriodo = fechasFiltradas.length;
             const divisorDias = Math.max(1, numDiasPeriodo / 7);
 
@@ -1054,7 +1053,6 @@
                     rosterAvgVector[idx] = Math.round(rosterSum / numDiasPeriodo);
 
                     if (usarPicos) {
-                        // En modo picos, usa el pico de llamadas del periodo
                         let callsArray = [];
                         let reqArray = [];
                         let ahtArray = [];
@@ -1071,7 +1069,6 @@
                         reqAvgVector[idx] = Math.max(...reqArray);
                         ahtAvgVector[idx] = Math.max(...ahtArray);
                     } else {
-                        // FIX: Promedio por día de la semana (ej. suma total del mes / ~4.2 semanas)
                         llamadasAvgVector[idx] = callsSum / numDiasPeriodo;
                         reqAvgVector[idx] = reqSum / numDiasPeriodo;
                         ahtAvgVector[idx] = callsSum > 0 ? (htSum / callsSum) : 180;
@@ -1291,25 +1288,21 @@
 
                 // --- NUEVO: CÁLCULO DE DEMANDA POR DÍA DE LA SEMANA ---
                 const mapDiasStr = { "Lunes": 0, "Martes": 1, "Miércoles": 2, "Jueves": 3, "Viernes": 4, "Sábado": 5, "Domingo": 6, "Miercoles": 2, "Sabado": 5 };
-                let llamadasPorDia = [0, 0, 0, 0, 0, 0, 0];
+                globalLlamadasPorDia = [0, 0, 0, 0, 0, 0, 0];
 
                 dfFiltered.forEach(r => {
                     let dia = getProp(r, ['Día_Semana', 'Dia_Semana'], '');
                     if (mapDiasStr[dia] !== undefined) {
-                        llamadasPorDia[mapDiasStr[dia]] += (Number(getProp(r, ['Llamadas', 'Recibidas'], 0)) || 0);
+                        globalLlamadasPorDia[mapDiasStr[dia]] += (Number(getProp(r, ['Llamadas', 'Recibidas'], 0)) || 0);
                     }
                 });
 
-                // Ordena los índices (0=Lunes a 6=Domingo) del día con MENOS llamadas al de MÁS llamadas
-                globalDiasOrdenados = [0, 1, 2, 3, 4, 5, 6].sort((a, b) => llamadasPorDia[a] - llamadasPorDia[b]);
+                globalDiasOrdenados = [0, 1, 2, 3, 4, 5, 6].sort((a, b) => globalLlamadasPorDia[a] - globalLlamadasPorDia[b]);
                 // -----------------------------------------------------
 
                 if (globalTurnosOptimos.length === 0) {
                     optTbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-slate-500 font-sans font-medium">No se requieren agentes dentro de la ventana de servicio.</td></tr>';
                 } else {
-                    let offsetDiurno = 0;
-                    let offsetNocturno = 0;
-
                     globalTurnosOptimos.forEach(t => {
                         const hcTurno = t.nomina_a_contratar;
                         if (hcTurno <= 0) return;
@@ -1317,21 +1310,32 @@
                         const shiftStr = `${t.horario_entrada} - ${t.horario_salida}`;
                         const esTurnoNocturno = t.duracion.includes('Nocturno');
 
+                        // --- NUEVO ALGORITMO: REPARTO POR RATIO ---
                         let distribucion = [0, 0, 0, 0, 0, 0, 0];
-                        
+                        let workingAgents = [hcTurno, hcTurno, hcTurno, hcTurno, hcTurno, hcTurno, hcTurno];
+
                         for (let i = 0; i < hcTurno; i++) {
-                            let indexPrioridad;
-                            if (esTurnoNocturno) {
-                                indexPrioridad = offsetNocturno % 7;
-                                offsetNocturno++;
-                            } else {
-                                indexPrioridad = offsetDiurno % 7;
-                                offsetDiurno++;
+                            let maxRatio = -1;
+                            let diaElegido = 0;
+                            
+                            for (let d = 0; d < 7; d++) {
+                                let volDemanda = globalLlamadasPorDia[d] || 0.1; 
+                                let ratio = workingAgents[d] / volDemanda; 
+                                
+                                if (ratio > maxRatio) {
+                                    maxRatio = ratio;
+                                    diaElegido = d;
+                                }
                             }
                             
-                            let diaValle = globalDiasOrdenados[indexPrioridad];
-                            distribucion[diaValle]++;
+                            distribucion[diaElegido]++;
+                            workingAgents[diaElegido]--;
+                            if (esTurnoNocturno) {
+                                // En nocturno hay dos descansos, restamos un agente extra
+                                workingAgents[(diaElegido + 1) % 7]--;
+                            }
                         }
+                        // ------------------------------------------
 
                         for (let i = 0; i < 7; i++) {
                             const hcDescanso = distribucion[i];
@@ -1441,9 +1445,6 @@
             const headers = ["HC", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
             const csvRows = [headers.join(",")];
             
-            let offsetDiurno = 0;
-            let offsetNocturno = 0;
-
             globalTurnosOptimos.forEach(t => {
                 const hcTurno = t.nomina_a_contratar;
                 if (hcTurno <= 0) return;
@@ -1451,21 +1452,31 @@
                 const shiftStr = `${t.horario_entrada} - ${t.horario_salida}`;
                 const esTurnoNocturno = t.duracion.includes('Nocturno');
 
+                // --- NUEVO ALGORITMO: REPARTO POR RATIO (EXPORTACIÓN) ---
                 let distribucion = [0, 0, 0, 0, 0, 0, 0];
-                
+                let workingAgents = [hcTurno, hcTurno, hcTurno, hcTurno, hcTurno, hcTurno, hcTurno];
+
                 for (let i = 0; i < hcTurno; i++) {
-                    let indexPrioridad;
-                    if (esTurnoNocturno) {
-                        indexPrioridad = offsetNocturno % 7;
-                        offsetNocturno++;
-                    } else {
-                        indexPrioridad = offsetDiurno % 7;
-                        offsetDiurno++;
+                    let maxRatio = -1;
+                    let diaElegido = 0;
+                    
+                    for (let d = 0; d < 7; d++) {
+                        let volDemanda = globalLlamadasPorDia[d] || 0.1; 
+                        let ratio = workingAgents[d] / volDemanda; 
+                        
+                        if (ratio > maxRatio) {
+                            maxRatio = ratio;
+                            diaElegido = d;
+                        }
                     }
                     
-                    let diaValle = globalDiasOrdenados[indexPrioridad];
-                    distribucion[diaValle]++;
+                    distribucion[diaElegido]++;
+                    workingAgents[diaElegido]--;
+                    if (esTurnoNocturno) {
+                        workingAgents[(diaElegido + 1) % 7]--;
+                    }
                 }
+                // -------------------------------------------------------
                 
                 for (let i = 0; i < 7; i++) {
                     const hcDescanso = distribucion[i];
