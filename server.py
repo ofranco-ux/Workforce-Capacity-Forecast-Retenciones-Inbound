@@ -2671,7 +2671,71 @@ def _schedule_plan_engine(rows,agents,overrides,absences,start,end,jornada,optio
             improvement+=max(0,req-b)-max(0,req-after)
         return improvement
     if options in ('both','existing'):
-        # Coordinate descent; at most one accepted movement per agent/date.
+        # 1) Alinear primero la duración real de cada agente con la jornada usada
+        #    por el forecast. Ejemplo: si el forecast se dimensionó con 6 h y el
+        #    roster trae 5.5 h, la propuesta debe llevar el turno a 6 h.
+        #
+        #    Se conservan descansos, ausencias, incidencias y horarios nocturnos.
+        #    La nueva jornada se coloca en intervalos de 30 minutos, dentro de
+        #    07:00-22:00 y con un desplazamiento máximo de 90 minutos respecto
+        #    al inicio actual. Si basta con extender el final, se prioriza esa
+        #    alternativa por ser el cambio operativo más pequeño.
+        for a in agents:
+            camp=a['campaign']
+            if camp not in campaigns:continue
+            for date in dates:
+                key=(a['agentId'],date)
+                if key in used:continue
+                oldtext=effective(a,date);bounds=_schedule_plan_bounds(oldtext)
+                if not bounds or _schedule_plan_night(bounds) or key in overrides or has_incident(a['agentId'],date):continue
+                if bounds[0]%30 or bounds[1]%30:
+                    reasons['intervalos']='Se conservan los turnos que no están alineados a intervalos de 30 minutos.';continue
+
+                minutes=round(durations.get((camp,date),jornada)*60)
+                current_minutes=bounds[1]-bounds[0]
+                if current_minutes==minutes:
+                    continue
+
+                oldkeys=_schedule_plan_keys(date,bounds)
+                candidate_starts={bounds[0]+d for d in (-90,-60,-30,0,30,60,90)}
+                # También considerar conservar exactamente la hora de salida.
+                candidate_starts.add(bounds[1]-minutes)
+
+                best_resize=None
+                for start_min in sorted(candidate_starts):
+                    b=(start_min,start_min+minutes)
+                    if b[0]<420 or b[1]>1320:continue
+                    if b[0]%30 or b[1]%30:continue
+                    nk=_schedule_plan_keys(date,b)
+                    gain=score(camp,oldkeys,nk)
+                    if gain<0:continue
+                    # Primero cobertura; después, menor cambio total; por último
+                    # conservar el inicio actual cuando haya empate.
+                    total_change=abs(b[0]-bounds[0])+abs(b[1]-bounds[1])
+                    rank=(gain,-total_change,-abs(b[0]-bounds[0]))
+                    if best_resize is None or rank>best_resize[0]:
+                        best_resize=(rank,b,nk)
+
+                if best_resize is None:
+                    reasons['jornada_sin_ajuste']='Algunos turnos no pudieron alinearse a la jornada proyectada sin afectar cobertura o salir de la ventana 07:00-22:00.'
+                    continue
+
+                rank,b,nk=best_resize
+                add(camp,oldkeys,-1);add(camp,nk,1);used.add(key)
+                moves.append({
+                    'agentId':a['agentId'],'fullName':a['fullName'],'campaign':camp,'date':date,
+                    'before':oldtext,'after':_schedule_plan_text(*b),
+                    'hours':(b[1]-b[0])/60,
+                    'previousHours':current_minutes/60,
+                    'durationAdjusted':True,
+                    'reducedDeficitHours':max(0,rank[0])*.5
+                })
+
+        if any(m.get('durationAdjusted') for m in moves):
+            reasons['jornada_alineada']=f'Se alinearon los turnos existentes a la jornada de {jornada:g} horas utilizada por el forecast antes de optimizar la cobertura.'
+
+        # 2) Con la duración ya alineada, desplazar turnos que aún puedan mejorar
+        #    la cobertura. Como máximo se acepta un movimiento por agente/fecha.
         for unused in range(min(limit,300)):
             best=None
             for a in agents:
@@ -2686,7 +2750,10 @@ def _schedule_plan_engine(rows,agents,overrides,absences,start,end,jornada,optio
                         reasons['intervalos']='Se conservan los turnos que no están alineados a intervalos de 30 minutos.';continue
                     minutes=round(durations.get((camp,date),jornada)*60)
                     if bounds[1]-bounds[0]!=minutes:
-                        reasons['jornada_distinta']='Los agentes cuya jornada actual difiere de la proyectada se conservan sin ampliar ni reducir su turno.';continue
+                        # Si llegó aquí es porque no fue posible alinear el turno
+                        # en el paso anterior. No proponer un desplazamiento con
+                        # una duración distinta a la usada por el forecast.
+                        continue
                     oldkeys=_schedule_plan_keys(date,bounds)
                     for delta in (-90,-60,-30,30,60,90):
                         b=(bounds[0]+delta,bounds[1]+delta)
@@ -2696,7 +2763,7 @@ def _schedule_plan_engine(rows,agents,overrides,absences,start,end,jornada,optio
                         if gain>0 and (best is None or rank>best[0]):best=(rank,a,date,oldtext,b,oldkeys,nk)
             if best is None:break
             rank,a,date,oldtext,b,ok,nk=best;add(a['campaign'],ok,-1);add(a['campaign'],nk,1);used.add((a['agentId'],date))
-            moves.append({'agentId':a['agentId'],'fullName':a['fullName'],'campaign':a['campaign'],'date':date,'before':oldtext,'after':_schedule_plan_text(*b),'hours':(b[1]-b[0])/60,'reducedDeficitHours':rank[0]*.5})
+            moves.append({'agentId':a['agentId'],'fullName':a['fullName'],'campaign':a['campaign'],'date':date,'before':oldtext,'after':_schedule_plan_text(*b),'hours':(b[1]-b[0])/60,'previousHours':(b[1]-b[0])/60,'durationAdjusted':False,'reducedDeficitHours':rank[0]*.5})
     after_existing=deficit()
     if options in ('both','new'):
         for unused in range(min(limit,300)):
