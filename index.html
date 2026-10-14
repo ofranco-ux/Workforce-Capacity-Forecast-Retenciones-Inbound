@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <base href="/retenciones/">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
@@ -4211,7 +4212,7 @@
 
             const promise = (async () => {
                 try {
-                    const response = await fetch(`/api/campaigns?mode=${mode}&t=${Date.now()}`, { cache: 'no-store' });
+                    const response = await fetch(`api/campaigns?mode=${mode}&t=${Date.now()}`, { cache: 'no-store' });
                     if (!response.ok) return [];
                     const data = await response.json();
                     const clean = Array.isArray(data)
@@ -4753,7 +4754,7 @@
         }
 
         function setRunStatus(text, tone='slate') { const t=document.getElementById('runStatusText'), d=document.getElementById('runStatusDot'); if(t)t.innerText=text; if(d){d.className = tone==='red'?'text-[#FB7185]':tone==='amber'?'text-[#FBBF24]':tone==='green'?'text-[#34D399]':'text-slate-500';} }
-        async function loadSourceMeta(){ try { const r=await fetch('/api/status?t='+Date.now()); const m=await r.json(); if(r.ok){ document.getElementById('sourceMeta').innerText=`Archivo: ${m.archivo||'—'} · Último dato: ${m.ultimo_dato||'—'} · Actualización: ${m.actualizacion||'—'}`; } } catch(e){} }
+        async function loadSourceMeta(){ try { const r=await fetch('api/status?t='+Date.now()); const m=await r.json(); if(r.ok){ document.getElementById('sourceMeta').innerText=`Archivo: ${m.archivo||'—'} · Último dato: ${m.ultimo_dato||'—'} · Actualización: ${m.actualizacion||'—'}`; } } catch(e){} }
 
 
         function getProp(row, keys, def = '') {
@@ -4968,7 +4969,7 @@
 
             const promise = (async () => {
                 try {
-                    const response = await fetch('/api/latest?mode=' + mode, { cache: force ? 'no-cache' : 'default' });
+                    const response = await fetch('api/latest?mode=' + mode, { cache: force ? 'no-cache' : 'default' });
                     let data = null;
                     try { data = await response.json(); } catch (_) { data = null; }
                     if (!response.ok) {
@@ -5099,8 +5100,8 @@
             formData.append('jornada', document.getElementById('jornada') ? document.getElementById('jornada').value : 8);
             formData.append('nocturno', document.getElementById('chkNocturno')?.checked ? 'true' : 'false');
             
-            let url = '/api/process';
-            if (forecastMode === 'chat') url = '/api/process_chat';
+            let url = 'api/process';
+            if (forecastMode === 'chat') url = 'api/process_chat';
 
             try {
                 setRunStatus('Calculando campañas…', 'amber');
@@ -5317,7 +5318,7 @@
                         intervalos: Array.from(selectedIntervalos)
                     }
                 };
-                fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) }).catch(()=>{});
+                fetch('api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) }).catch(()=>{});
             }
         }
 
@@ -5349,7 +5350,7 @@
             updateForecastMenuUI();
 
             try {
-                const response = await fetch('/api/config?t=' + new Date().getTime());
+                const response = await fetch('api/config?t=' + new Date().getTime());
                 if (response.ok) {
                     const config = await response.json();
                     
@@ -6285,7 +6286,7 @@
 
         async function fetchForecastControlStatus(monthLabel,channel){
             const monthKey=forecastControlMonthKey(monthLabel);
-            const response=await fetch(`/api/forecast-control/status?monthKey=${encodeURIComponent(monthKey)}&channel=${encodeURIComponent(channel)}`,{cache:'no-store'});
+            const response=await fetch(`api/forecast-control/status?monthKey=${encodeURIComponent(monthKey)}&channel=${encodeURIComponent(channel)}`,{cache:'no-store'});
             const data=await response.json();
             if(!response.ok)throw new Error(data.error||'No se pudo consultar el control del forecast.');
             return data;
@@ -6361,7 +6362,7 @@
             if(!reason){alert('Escribe un comentario de cierre para dejar trazabilidad.');return;}
             if(!confirm(`Cerrar ${month} · ${forecastChannelLabel(channel)}?\n\nEl HC requerido quedará bloqueado. El cierre no se realizará automáticamente en ningún otro mes.`))return;
             try{
-                const response=await fetch('/api/forecast-control/close',{
+                const response=await fetch('api/forecast-control/close',{
                     method:'POST',headers:{'Content-Type':'application/json'},
                     body:JSON.stringify({month,channel,comment:reason,actorMode:currentMode})
                 });
@@ -6382,7 +6383,7 @@
             const cards=document.getElementById('forecastControlCards');
             if(cards)cards.innerHTML='<div class="forecast-control-loading">Ejecutando ML y aplicando únicamente cambios futuros…</div>';
             try{
-                const response=await fetch('/api/forecast-control/reforecast',{
+                const response=await fetch('api/forecast-control/reforecast',{
                     method:'POST',headers:{'Content-Type':'application/json'},
                     body:JSON.stringify({month,channel,reason,actorMode:currentMode})
                 });
@@ -6406,7 +6407,7 @@
             if(!reason){alert('La reapertura requiere un motivo.');return;}
             if(!confirm(`Reabrir ${month} · ${forecastChannelLabel(channel)}?\n\nEl mes volverá a Rolling y el HC requerido podrá recalcularse. El historial del cierre se conservará.`))return;
             try{
-                const response=await fetch('/api/forecast-control/reopen',{
+                const response=await fetch('api/forecast-control/reopen',{
                     method:'POST',headers:{'Content-Type':'application/json'},
                     body:JSON.stringify({month,channel,reason,actorMode:currentMode})
                 });
@@ -6427,7 +6428,7 @@
             try{
                 const channels=forecastControlChannels();
                 const results=await Promise.all(channels.map(async channel=>{
-                    const r=await fetch(`/api/forecast-control/history?monthKey=${encodeURIComponent(monthKey)}&channel=${encodeURIComponent(channel)}`,{cache:'no-store'});
+                    const r=await fetch(`api/forecast-control/history?monthKey=${encodeURIComponent(monthKey)}&channel=${encodeURIComponent(channel)}`,{cache:'no-store'});
                     const d=await r.json();
                     if(!r.ok)throw new Error(d.error||'Error de historial');
                     return {channel,history:d.history||[]};
@@ -6603,7 +6604,7 @@
             const catalog = new Set((baseCampaigns || []).map(x=>String(x||'').trim()).filter(Boolean));
             const modes = ['llamadas','chat'];
             const results = await Promise.allSettled(modes.map(async mode=>{
-                const response = await fetch(`/api/campaigns?mode=${mode}&t=${Date.now()}`, {cache:'no-store'});
+                const response = await fetch(`api/campaigns?mode=${mode}&t=${Date.now()}`, {cache:'no-store'});
                 if (!response.ok) return [];
                 const data = await response.json();
                 return Array.isArray(data) ? data : [];
@@ -6692,7 +6693,7 @@
             if (tbody && !hadRoster) tbody.innerHTML = '<tr><td colspan="18" style="padding:30px;text-align:center;color:#7D8FA1">Cargando roster operativo…</td></tr>';
             if (hadRoster) setRosterSyncStatus('recalculating','Actualizando…');
             try {
-                const response = await fetch('/api/roster?includeInactive=true', {cache:'no-store'});
+                const response = await fetch('api/roster?includeInactive=true', {cache:'no-store'});
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'No se pudo cargar el roster.');
                 rosterAgents = Array.isArray(data.agents) ? data.agents.map(a=>({...a,status:rosterNormalizeStatus(a?.status)})) : [];
@@ -7144,7 +7145,7 @@
             markRosterSaving();
             if(btn){btn.disabled=true;btn.textContent='Guardando…';}
             try{
-                const response=await fetch('/api/roster/agent',{
+                const response=await fetch('api/roster/agent',{
                     method:'POST',
                     headers:{'Content-Type':'application/json'},
                     body:JSON.stringify(payload)
@@ -7153,7 +7154,7 @@
                 if(!response.ok)throw new Error(data.error||'No se pudo guardar.');
 
                 if(savingValidity==='temporary'){
-                    const tempResponse=await fetch('/api/roster/temporary-schedule',{
+                    const tempResponse=await fetch('api/roster/temporary-schedule',{
                         method:'POST',
                         headers:{'Content-Type':'application/json'},
                         body:JSON.stringify({
@@ -7213,7 +7214,7 @@
 
             markRosterSaving(`Guardando ${rosterSelectedIds.size} agentes…`);
             try{
-                const response=await fetch('/api/roster/bulk',{
+                const response=await fetch('api/roster/bulk',{
                     method:'POST',
                     headers:{'Content-Type':'application/json'},
                     body:JSON.stringify({agentIds:Array.from(rosterSelectedIds),changes,actorMode:currentMode})
@@ -7245,7 +7246,7 @@
                 const form=new FormData();
                 form.append('file',file);
                 form.append('actorMode',currentMode);
-                const response=await fetch('/api/roster/import',{method:'POST',body:form});
+                const response=await fetch('api/roster/import',{method:'POST',body:form});
                 const data=await response.json();
                 if(!response.ok)throw new Error(data.error||'No se pudo importar.');
 
@@ -7262,8 +7263,8 @@
             }
         }
 
-        function exportRosterCsv(){window.location.href='/api/roster/export.csv';}
-        function downloadRosterTemplate(){window.location.href='/api/roster/template.xlsx';}
+        function exportRosterCsv(){window.location.href='api/roster/export.csv';}
+        function downloadRosterTemplate(){window.location.href='api/roster/template.xlsx';}
 
 
         function openRosterVacationEditor(agentId){
@@ -7311,7 +7312,7 @@
             const btn=document.getElementById('rosterVacationSaveBtn');
             if(btn){btn.disabled=true;btn.textContent='Guardando…';}
             try{
-                const response=await fetch('/api/roster/vacations',{
+                const response=await fetch('api/roster/vacations',{
                     method:'POST',
                     headers:{'Content-Type':'application/json'},
                     body:JSON.stringify({
@@ -7372,7 +7373,7 @@
             const labels={approved:'aprobar estas vacaciones y excluir al agente del forecast',rejected:'rechazar esta solicitud',cancelled:'cancelar estas vacaciones'};
             if(!confirm(`¿Confirmas ${labels[status]||'este cambio'}?`))return;
             try{
-                const response=await fetch(`/api/roster/vacation/${vacationId}/status`,{
+                const response=await fetch(`api/roster/vacation/${vacationId}/status`,{
                     method:'POST',
                     headers:{'Content-Type':'application/json'},
                     body:JSON.stringify({status,actorMode:currentMode})
@@ -7421,7 +7422,7 @@
         async function cancelRosterTemporaryChange(batchId,agentId){
             if(!confirm(`Cancelar el cambio temporal de ${agentId}?\n\nPara las fechas pendientes volverá a utilizar su horario base.`))return;
             try{
-                const response=await fetch(`/api/roster/temporary-change/${encodeURIComponent(batchId)}/cancel`,{
+                const response=await fetch(`api/roster/temporary-change/${encodeURIComponent(batchId)}/cancel`,{
                     method:'POST',
                     headers:{'Content-Type':'application/json'},
                     body:JSON.stringify({actorMode:currentMode,reason:'Cancelado desde Gestión de horarios'})
@@ -7469,7 +7470,7 @@
             if(cached.length) renderRosterHistoryRows(cached,true);
             else list.innerHTML='<div class="roster-empty"><strong>Cargando historial…</strong></div>';
             try{
-                const response=await fetch('/api/roster/history?limit=1000',{cache:'no-store'});const rows=await response.json();
+                const response=await fetch('api/roster/history?limit=1000',{cache:'no-store'});const rows=await response.json();
                 if(!response.ok)throw new Error(rows.error||'No se pudo cargar el historial.');
                 saveRosterHistorySnapshot(rows);
                 renderRosterHistoryRows(rows,false);
@@ -7494,7 +7495,7 @@
             if(!confirm(`Aplicar al roster operativo?\n\n${who}\n${move.date||''}\n${move.currentSchedule||'—'} → ${move.proposedSchedule||'—'}\n\nSe guardará como excepción para esa fecha específica.`))return;
             const original=buttonEl?.textContent||'';if(buttonEl){buttonEl.disabled=true;buttonEl.textContent='Aplicando…';}
             try{
-                const response=await fetch('/api/roster/apply-recommendation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actionId,move,actorMode:currentMode})});
+                const response=await fetch('api/roster/apply-recommendation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actionId,move,actorMode:currentMode})});
                 const data=await response.json();if(!response.ok)throw new Error(data.error||'No se pudo aplicar al roster.');
                 await Promise.all([loadWfmDecisionLog(),loadRosterData()]);
                 renderWfmPlanWorkspace(wfmCurrentPlanPayload);
@@ -8276,7 +8277,7 @@
             wfmAutopilotAbortController = new AbortController();
 
             try {
-                const response = await fetch('/api/wfm_assistant', {
+                const response = await fetch('api/wfm_assistant', {
                     method:'POST',
                     headers:{'Content-Type':'application/json'},
                     signal:wfmAutopilotAbortController.signal,
@@ -8543,7 +8544,7 @@
 
             try {
                 const context = buildWfmAssistantContext();
-                const response = await fetch('/api/wfm_action_decision', {
+                const response = await fetch('api/wfm_action_decision', {
                     method:'POST',
                     headers:{'Content-Type':'application/json'},
                     body:JSON.stringify({
@@ -8579,7 +8580,7 @@
 
         async function loadWfmDecisionLog() {
             try {
-                const response = await fetch('/api/wfm_action_decisions?limit=100');
+                const response = await fetch('api/wfm_action_decisions?limit=100');
                 const data = await response.json();
                 if (!response.ok) throw new Error('No se pudo cargar la bitácora.');
                 wfmDecisionLog = Array.isArray(data.records) ? data.records : [];
@@ -8969,7 +8970,7 @@
             const thinking = appendWfmAssistantThinking();
 
             try {
-                const response = await fetch('/api/wfm_assistant', {
+                const response = await fetch('api/wfm_assistant', {
                     method:'POST',
                     headers:{'Content-Type':'application/json'},
                     body:JSON.stringify({ question, context })
