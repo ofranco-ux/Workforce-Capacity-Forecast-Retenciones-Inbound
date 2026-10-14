@@ -1,7 +1,7 @@
+Flask
+Flask-Cors
 pandas
 numpy
-flask
-flask-cors
 openpyxl
 holidays
 scikit-learn
