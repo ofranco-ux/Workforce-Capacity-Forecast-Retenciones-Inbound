@@ -782,14 +782,55 @@ def parse_time_str(t_str):
         return int(p[0]) * 60 + int(p[1])
     except: return None
 
-def esta_en_ventana_servicio(campana, intervalo_str):
-    camp_key = str(campana).strip().lower()
-    min_in = parse_time_str(intervalo_str)
-    if min_in is None: return True
+def _service_minutes_text(minutes):
+    minutes = int(max(0, min(24 * 60, minutes)))
+    if minutes == 24 * 60:
+        return '24:00'
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+def ventana_servicio_campana(campana, campaign_settings=None):
+    """Devuelve la ventana efectiva de servicio de una campaña.
+
+    La configuración guardada en campaignSettings tiene prioridad sobre los
+    valores predeterminados del proyecto. De esta forma forecast y planeador
+    de horarios consumen exactamente la misma regla operativa.
+    """
+    camp_key = normalizar_nombre_campana(campana)
+    default = {'inicio': 0, 'fin': 24 * 60}
     for key, window in VENTANAS_SERVICIO.items():
         if key in camp_key or camp_key in key:
-            return window['inicio'] <= min_in < window['fin']
-    return True
+            default = {'inicio': int(window['inicio']), 'fin': int(window['fin'])}
+            break
+
+    settings = normalizar_config_campanas(campaign_settings)
+    cfg = settings.get(camp_key, {}) if isinstance(settings, dict) else {}
+    raw_start = cfg.get('serviceStart', cfg.get('service_start')) if isinstance(cfg, dict) else None
+    raw_end = cfg.get('serviceEnd', cfg.get('service_end')) if isinstance(cfg, dict) else None
+    start = parse_time_str(raw_start) if raw_start not in (None, '') else default['inicio']
+    end = parse_time_str(raw_end) if raw_end not in (None, '') else default['fin']
+
+    # El proyecto de Retenciones trabaja ventanas diurnas. Si llega una
+    # configuración inválida, conservar el valor seguro anterior en lugar de
+    # generar forecast/horarios fuera de operación.
+    if start is None or end is None or start < 0 or start >= 24 * 60 or end <= 0 or end > 24 * 60 or end <= start:
+        start, end = default['inicio'], default['fin']
+
+    return {
+        'inicio': int(start),
+        'fin': int(end),
+        'inicioTexto': _service_minutes_text(start),
+        'finTexto': _service_minutes_text(end),
+        'custom': bool(raw_start not in (None, '') or raw_end not in (None, ''))
+    }
+
+
+def esta_en_ventana_servicio(campana, intervalo_str, campaign_settings=None):
+    min_in = parse_time_str(intervalo_str)
+    if min_in is None:
+        return True
+    window = ventana_servicio_campana(campana, campaign_settings)
+    return window['inicio'] <= min_in < window['fin']
 
 def encontrar_columna(df, posibles):
     for p in posibles:
@@ -2617,10 +2658,14 @@ def _schedule_plan_breaks(agent_days,slots):
         deficit+=sum(max(0,slot['required']-v) for v in values)/12
     return results,{'assigned':len(results)-pending,'pending':pending,'requiresSupport':support,'deficitHoursAfterBreaks':deficit}
 
-def _schedule_plan_engine(rows,agents,overrides,absences,start,end,jornada,options='both',limit=100):
+def _schedule_plan_engine(rows,agents,overrides,absences,start,end,jornada,options='both',limit=100,campaign_settings=None):
     dates=[(datetime.strptime(start,'%Y-%m-%d')+timedelta(days=i)).strftime('%Y-%m-%d') for i in range((datetime.strptime(end,'%Y-%m-%d')-datetime.strptime(start,'%Y-%m-%d')).days+1)]
     daynames=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
     campaigns=sorted({r['Campaña'] for r in rows if start<=str(r['Fecha'])[:10]<=end})
+    service_windows={c:ventana_servicio_campana(c,campaign_settings) for c in campaigns}
+    def service_bounds(camp):
+        w=service_windows.get(camp) or ventana_servicio_campana(camp,campaign_settings)
+        return int(w['inicio']),int(w['fin'])
     state={};durations={};locked=set()
     for camp in campaigns:
         for date in dates:
@@ -2704,7 +2749,8 @@ def _schedule_plan_engine(rows,agents,overrides,absences,start,end,jornada,optio
                 best_resize=None
                 for start_min in sorted(candidate_starts):
                     b=(start_min,start_min+minutes)
-                    if b[0]<420 or b[1]>1320:continue
+                    service_start,service_end=service_bounds(camp)
+                    if b[0]<service_start or b[1]>service_end:continue
                     if b[0]%30 or b[1]%30:continue
                     nk=_schedule_plan_keys(date,b)
                     gain=score(camp,oldkeys,nk)
@@ -2717,7 +2763,7 @@ def _schedule_plan_engine(rows,agents,overrides,absences,start,end,jornada,optio
                         best_resize=(rank,b,nk)
 
                 if best_resize is None:
-                    reasons['jornada_sin_ajuste']='Algunos turnos no pudieron alinearse a la jornada proyectada sin afectar cobertura o salir de la ventana 07:00-22:00.'
+                    reasons['jornada_sin_ajuste']='Algunos turnos no pudieron alinearse a la jornada proyectada sin afectar cobertura o salir de la ventana de servicio configurada para su campaña.'
                     continue
 
                 rank,b,nk=best_resize
@@ -2757,7 +2803,8 @@ def _schedule_plan_engine(rows,agents,overrides,absences,start,end,jornada,optio
                     oldkeys=_schedule_plan_keys(date,bounds)
                     for delta in (-90,-60,-30,30,60,90):
                         b=(bounds[0]+delta,bounds[1]+delta)
-                        if b[0]<420 or b[1]>1320:continue
+                        service_start,service_end=service_bounds(camp)
+                        if b[0]<service_start or b[1]>service_end:continue
                         nk=_schedule_plan_keys(date,b);gain=score(camp,oldkeys,nk)
                         rank=(gain,-abs(delta))
                         if gain>0 and (best is None or rank>best[0]):best=(rank,a,date,oldtext,b,oldkeys,nk)
@@ -2769,11 +2816,13 @@ def _schedule_plan_engine(rows,agents,overrides,absences,start,end,jornada,optio
         for unused in range(min(limit,300)):
             best=None
             for camp in campaigns:
-                night=['22:00-07:00']
-                if any(t!='22:00-07:00' for t in templates[camp]):reasons['nocturnos_previos']='Se conservan los nocturnos existentes con otro horario; las nuevas propuestas nocturnas son exclusivamente de 22:00 a 07:00 (9 horas).'
+                service_start,service_end=service_bounds(camp)
+                if any(_schedule_plan_night(_schedule_plan_bounds(t)) for t in templates[camp]):
+                    reasons['nocturnos_previos']='Se conservan los nocturnos existentes, pero los nuevos turnos se proponen únicamente dentro de la ventana de servicio configurada para la campaña.'
                 for date in dates:
                     minutes=round(durations.get((camp,date),jornada)*60)
-                    candidates=[_schedule_plan_text(s,s+minutes) for s in range(420,1320-minutes+1,30)]+night
+                    last_start=service_end-minutes
+                    candidates=[] if last_start<service_start else [_schedule_plan_text(s,s+minutes) for s in range(service_start,last_start+1,30)]
                     for text in candidates:
                         b=_schedule_plan_bounds(text);keys=_schedule_plan_keys(date,b);gain=score(camp,set(),keys)
                         # Prefer lower surplus, then a daytime candidate for equal gain.
@@ -2813,7 +2862,7 @@ def _schedule_plan_engine(rows,agents,overrides,absences,start,end,jornada,optio
             change='Ajuste de horario' if move else ('Ausencia aprobada' if absent(agent['agentId'],date) else ('Incidencia parcial validada' if has_incident(agent['agentId'],date) else ('Descanso conservado' if not _schedule_plan_bounds(current) else 'Sin cambio')))
             agent_days.append({'agentId':agent['agentId'],'fullName':agent.get('fullName',''),'supervisor':agent.get('supervisor',''),'campaign':agent['campaign'],'date':date,'before':current,'after':proposed,'change':change,'hasAbsence':has_incident(agent['agentId'],date), 'shiftMinutes':(_schedule_plan_bounds(proposed)[0]-_schedule_plan_bounds(current)[0]) if move else 0})
     breaks,break_summary=_schedule_plan_breaks([dict(r) for r in agent_days],slots)
-    return {'breakSource':'operational','breaks':breaks,'breakSummary':break_summary,'agentDays':agent_days,'moves':moves,'newPatterns':patterns,'newShifts':new,'slots':slots,'summary':{'deficitHoursBefore':before,'deficitHoursAfterExisting':after_existing,'deficitHoursAfterAll':deficit(),'movements':len(moves),'newShiftDays':sum(n['quantity'] for n in new),'protectedNightDays':protected,'closedCampaignDays':len(locked)},'rules':{'dailyHours':jornada,'dayWindow':'07:00-22:00','maxMoveMinutes':90,'nightTemplates':{c:['22:00-07:00'] for c in campaigns},'nightHours':9,'nightRestDays':2,'dayRestDays':1,'restDaysPreserved':True,'vacationsPreserved':True},'notes':list(reasons.values())+['Los puestos PROP son propuestas sin agente: máximo 6 días por semana diurnos y 5 nocturnos. Las fechas no asignadas son descanso dentro del periodo; antes de asignar personas se revisa su semana completa fuera del periodo seleccionado.','Breaks propuestos de 20 minutos, desde 90 minutos después de entrar y terminando 60 minutos antes de salir, entre 07:00 y 22:00. Se prioriza cobertura, se escalonan las salidas y se busca la mitad del turno. Se permiten empalmes; si hay faltantes, se agenda y marca Requiere apoyo de cobertura. Solo quedan pendientes los turnos que no permiten cumplir la ventana; no representan breaks cancelados. Los breaks y su cobertura usan únicamente horarios operativos vigentes al generar, incluidos cambios por fecha y ausencias aprobadas, sin ajustes propuestos ni puestos vacantes. Aplicar ajustes no registra ni publica los breaks; se descargan como propuesta.']}
+    return {'breakSource':'operational','breaks':breaks,'breakSummary':break_summary,'agentDays':agent_days,'moves':moves,'newPatterns':patterns,'newShifts':new,'slots':slots,'summary':{'deficitHoursBefore':before,'deficitHoursAfterExisting':after_existing,'deficitHoursAfterAll':deficit(),'movements':len(moves),'newShiftDays':sum(n['quantity'] for n in new),'protectedNightDays':protected,'closedCampaignDays':len(locked)},'rules':{'dailyHours':jornada,'dayWindow':'Por campaña','serviceWindows':{c:f"{service_windows[c]['inicioTexto']}–{service_windows[c]['finTexto']}" for c in campaigns},'maxMoveMinutes':90,'nightTemplates':{},'nightHours':0,'nightRestDays':2,'dayRestDays':1,'restDaysPreserved':True,'vacationsPreserved':True},'notes':list(reasons.values())+['Los puestos PROP son propuestas sin agente: máximo 6 días por semana diurnos y 5 nocturnos. Las fechas no asignadas son descanso dentro del periodo; antes de asignar personas se revisa su semana completa fuera del periodo seleccionado.','Breaks propuestos de 20 minutos, desde 90 minutos después de entrar y terminando 60 minutos antes de salir, siempre dentro del turno y de la ventana de servicio de la campaña. Se prioriza cobertura, se escalonan las salidas y se busca la mitad del turno. Se permiten empalmes; si hay faltantes, se agenda y marca Requiere apoyo de cobertura. Solo quedan pendientes los turnos que no permiten cumplir la ventana; no representan breaks cancelados. Los breaks y su cobertura usan únicamente horarios operativos vigentes al generar, incluidos cambios por fecha y ausencias aprobadas, sin ajustes propuestos ni puestos vacantes. Aplicar ajustes no registra ni publica los breaks; se descargan como propuesta.']}
 
 
 def _schedule_planner_inputs(payload):
@@ -2844,11 +2893,13 @@ def _schedule_planner_inputs(payload):
         overrides=[dict(r) for r in conn.execute('SELECT * FROM roster_overrides ORDER BY agent_id,work_date')]
         absences=[dict(r) for r in conn.execute("SELECT * FROM roster_absences WHERE status='approved' ORDER BY id")]
     finally:conn.close()
-    hours=float(_forecast_runtime_params(mode).get('jornada',8))
+    runtime_params=_forecast_runtime_params(mode)
+    hours=float(runtime_params.get('jornada',8))
+    campaign_settings=runtime_params.get('campaignSettings',{}) if isinstance(runtime_params,dict) else {}
     for r in source:
         duration=float(r.get('Lock_Jornada_Horas') if r.get('HC_Bloqueado') else hours)
         if not .5<=duration<=16 or abs(duration*2-round(duration*2))>1e-9:raise ValueError('La jornada debe estar en intervalos de 30 minutos y entre 0.5 y 16 horas.')
-    inputs={'rows':source,'agents':agents,'overrides':overrides,'absences':absences,'start':start,'end':end,'jornada':hours,'options':option,'limit':100}
+    inputs={'rows':source,'agents':agents,'overrides':overrides,'absences':absences,'start':start,'end':end,'jornada':hours,'options':option,'limit':100,'campaign_settings':campaign_settings}
     fingerprint=hashlib.sha256(json.dumps(inputs,sort_keys=True,ensure_ascii=False,default=str).encode()).hexdigest()
     return inputs,fingerprint
 
@@ -2857,7 +2908,10 @@ def _schedule_planner_inputs(payload):
 def schedule_planner_catalog():
     if str(request.args.get('actorMode') or '').lower()!='wfm':return jsonify({'error':'El módulo de horarios está disponible solo en WFM.'}),403
     llamadas=sorted({str(r.get('Campaña')) for r in (_leer_cache_forecast('llamadas',allow_stale=True) or []) if r.get('Campaña')})
-    return jsonify({'llamadas':llamadas,'chat':[]}),200
+    runtime=_forecast_runtime_params('llamadas')
+    settings=runtime.get('campaignSettings',{}) if isinstance(runtime,dict) else {}
+    windows={c:{'start':ventana_servicio_campana(c,settings)['inicioTexto'],'end':ventana_servicio_campana(c,settings)['finTexto']} for c in llamadas}
+    return jsonify({'llamadas':llamadas,'chat':[],'serviceWindows':windows}),200
 
 
 @app.route('/api/schedule-planner/preview',methods=['POST'])
@@ -3412,7 +3466,7 @@ def procesar_archivo_llamadas(file_source, target_sl=80.0, target_time=20.0, mer
         predicciones_futuras[camp] = preds_finales
 
     vol_historico_por_campana = {c: float(df_diario[df_diario[col_camp] == c][col_calls].mean()) for c in campanas_unicas}
-    df['En_Ventana'] = [esta_en_ventana_servicio(c, i) for c, i in zip(df[col_camp], df['Inter_Clean'])]
+    df['En_Ventana'] = [esta_en_ventana_servicio(c, i, campaign_settings) for c, i in zip(df[col_camp], df['Inter_Clean'])]
     df_filtrado = df[df['En_Ventana']].copy()
 
     df_reciente = df_filtrado[df_filtrado[col_fecha] >= (max_fecha_real - timedelta(days=28))]
@@ -3431,7 +3485,7 @@ def procesar_archivo_llamadas(file_source, target_sl=80.0, target_time=20.0, mer
     mapa_perfil_global = {(r[col_camp], r['Inter_Clean']): r['weight'] for _, r in perfil_global.iterrows()}
     
     todos_los_intervalos_crudos = [f"{int(h):02d}:{int(m):02d}" for h in range(24) for m in (0, 30)]
-    intervalos_operativos_por_camp = {camp: [i for i in todos_los_intervalos_crudos if esta_en_ventana_servicio(camp, i)] for camp in campanas_unicas}
+    intervalos_operativos_por_camp = {camp: [i for i in todos_los_intervalos_crudos if esta_en_ventana_servicio(camp, i, campaign_settings)] for camp in campanas_unicas}
 
     del df_raw, df, df_diario, df_filtrado, df_reciente
     gc.collect()
@@ -3580,7 +3634,7 @@ def procesar_archivo_chat(file_source, target_sl=80.0, target_time=20.0, merma=0
         predicciones_futuras[camp] = preds_finales
 
     vol_historico_por_campana = {c: float(df_diario[df_diario[col_camp] == c][col_calls].mean()) for c in campanas_unicas}
-    df['En_Ventana'] = [esta_en_ventana_servicio(c, i) for c, i in zip(df[col_camp], df['Inter_Clean'])]
+    df['En_Ventana'] = [esta_en_ventana_servicio(c, i, campaign_settings) for c, i in zip(df[col_camp], df['Inter_Clean'])]
     df_filtrado = df[df['En_Ventana']].copy()
     df_reciente = df_filtrado[df_filtrado[col_fecha] >= (max_fecha_real - timedelta(days=28))]
     if df_reciente.empty: df_reciente = df_filtrado.copy()
@@ -3598,7 +3652,7 @@ def procesar_archivo_chat(file_source, target_sl=80.0, target_time=20.0, merma=0
     mapa_perfil_global = {(r[col_camp], r['Inter_Clean']): r['weight'] for _, r in perfil_global.iterrows()}
     
     todos_los_intervalos_crudos = [f"{int(h):02d}:{int(m):02d}" for h in range(24) for m in (0, 30)]
-    intervalos_operativos_por_camp = {camp: [i for i in todos_los_intervalos_crudos if esta_en_ventana_servicio(camp, i)] for camp in campanas_unicas}
+    intervalos_operativos_por_camp = {camp: [i for i in todos_los_intervalos_crudos if esta_en_ventana_servicio(camp, i, campaign_settings)] for camp in campanas_unicas}
 
     del df_raw, df, df_diario, df_filtrado, df_reciente
     gc.collect()
