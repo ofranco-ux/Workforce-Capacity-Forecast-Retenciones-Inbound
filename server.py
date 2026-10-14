@@ -926,6 +926,13 @@ def _roster_db_init():
             conn.execute('PRAGMA journal_mode=WAL')
             conn.execute('PRAGMA synchronous=NORMAL')
             conn.executescript("""
+                CREATE TABLE IF NOT EXISTS schedule_proposals (
+                    plan_id TEXT PRIMARY KEY,
+                    payload_json TEXT NOT NULL,
+                    fingerprint TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'preview'
+                );
                 CREATE TABLE IF NOT EXISTS roster_agents (
                     agent_id TEXT PRIMARY KEY,
                     full_name TEXT NOT NULL DEFAULT '',
@@ -2528,6 +2535,315 @@ def _roster_save_agent(payload, actor='wfm', reason='Edición manual', allow_cre
     else:
         _roster_backup_database()
     return after
+
+
+def _absence_minutes(record):
+    """Minutos de ausencia aprobada.
+
+    Retenciones usa ausencias por fecha completa; si en una versión futura
+    existen start_minute/end_minute, también se respetan automáticamente.
+    """
+    if str(record.get('status') or '').lower() != 'approved':
+        return set()
+    start = record.get('start_minute')
+    end = record.get('end_minute')
+    try:
+        start = int(start) if start is not None else 0
+        end = int(end) if end is not None else 1440
+    except (TypeError, ValueError):
+        start, end = 0, 1440
+    start = max(0, min(1440, start))
+    end = max(start, min(1440, end))
+    return set(range(start, end))
+
+def _schedule_plan_bounds(text):
+    try:
+        parts=str(text).split('-');vals=[int(p[:2])*60+int(p[3:5]) for p in parts]
+        if len(vals)!=2 or not 0<=vals[0]<1440 or not 0<=vals[1]<=1440:return None
+        start,end=vals;return start,end+(1440 if end<=start else 0)
+    except (ValueError,TypeError):return None
+
+def _schedule_plan_night(bounds):
+    return bool(bounds and (bounds[0]<420 or bounds[1]>1320))
+
+def _schedule_plan_text(start,end):
+    return f'{start//60:02d}:{start%60:02d}-{(end%1440)//60:02d}:{end%60:02d}'
+
+def _schedule_plan_keys(date,bounds):
+    if not bounds:return set()
+    day=datetime.strptime(date,'%Y-%m-%d')
+    return {((day+timedelta(days=m//1440)).strftime('%Y-%m-%d'),(m%1440)//30)
+            for m in range(bounds[0]//30*30,bounds[1],30)}
+
+def _schedule_plan_breaks(agent_days,slots):
+    # Five-minute resolution; current operational schedules only; never proposed shifts.
+    capacity={(s['campaign'],s['date'],i*6+j):float(s['before']) for s in slots for i in [int(s['interval'][:2])*2+int(s['interval'][3:5])//30] for j in range(6)}
+    required={(s['campaign'],s['date'],i*6+j):float(s['required']) for s in slots for i in [int(s['interval'][:2])*2+int(s['interval'][3:5])//30] for j in range(6)}
+    occupied={};results=[];pending=0;support=0
+    eligible=[]
+    for row in agent_days:
+        bounds=_schedule_plan_bounds(row['before'])
+        if row.get('hasAbsence'):
+            pending+=1;row.update(breakStart='',breakEnd='',breakStatus='Revisar con Ops: incidencia validada en la fecha');results.append({k:row.get(k,'') for k in ('agentId','fullName','supervisor','campaign','date','before','breakStart','breakEnd','breakStatus')});continue
+        if not bounds or _schedule_plan_night(bounds):
+            row.update(breakStart='',breakEnd='',breakStatus='No aplica: descanso, ausencia o nocturno');continue
+        first=max(420,bounds[0]+90);last=min(1320,bounds[1]-60)-20
+        eligible.append((last,first,row,(bounds[0]+bounds[1])/2-10))
+    # Earliest deadline first; coverage first, then proximity to mid-shift.
+    for last,first,row,midpoint in sorted(eligible,key=lambda x:(x[0],x[1],x[2]['agentId'],x[2]['date'])):
+        camp,date=row['campaign'],row['date'];best=None
+        for minute in range((first+4)//5*5,last+1,5):
+            keys=[(camp,date,k) for k in range(minute//5,minute//5+4)]
+            if any(capacity.get(k,0)<1 for k in keys):continue
+            added=sum(max(0,required.get(k,0)-capacity[k]+1)-max(0,required.get(k,0)-capacity[k]) for k in keys)
+            total=sum(max(0,required.get(k,0)-capacity[k]+1) for k in keys)
+            overlap=sum(occupied.get(k,0) for k in keys)
+            rank=(-added,-total,-overlap,-abs(minute-midpoint),-minute)
+            if best is None or rank>best[0]:best=(rank,minute,keys)
+        if best is None:
+            pending+=1;row.update(breakStart='',breakEnd='',breakStatus='Revisar turno: no cabe la ventana de break')
+        else:
+            _,minute,keys=best
+            needs_support=any(capacity[k]-1<required.get(k,0) for k in keys)
+            if needs_support:support+=1
+            for key in keys:capacity[key]-=1;occupied[key]=occupied.get(key,0)+1
+            row.update(breakStart=f'{minute//60:02d}:{minute%60:02d}',breakEnd=f'{(minute+20)//60:02d}:{(minute+20)%60:02d}',breakStatus='Requiere apoyo de cobertura' if needs_support else 'Propuesto')
+        results.append({k:row.get(k,'') for k in ('agentId','fullName','supervisor','campaign','date','before','breakStart','breakEnd','breakStatus')})
+    deficit=0
+    for slot in slots:
+        i=int(slot['interval'][:2])*2+int(slot['interval'][3:5])//30
+        values=[capacity[(slot['campaign'],slot['date'],i*6+j)] for j in range(6)]
+        slot['afterBreaks']=sum(values)/6;slot['minimumAfterBreaks']=min(values)
+        deficit+=sum(max(0,slot['required']-v) for v in values)/12
+    return results,{'assigned':len(results)-pending,'pending':pending,'requiresSupport':support,'deficitHoursAfterBreaks':deficit}
+
+def _schedule_plan_engine(rows,agents,overrides,absences,start,end,jornada,options='both',limit=100):
+    dates=[(datetime.strptime(start,'%Y-%m-%d')+timedelta(days=i)).strftime('%Y-%m-%d') for i in range((datetime.strptime(end,'%Y-%m-%d')-datetime.strptime(start,'%Y-%m-%d')).days+1)]
+    daynames=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
+    campaigns=sorted({r['Campaña'] for r in rows if start<=str(r['Fecha'])[:10]<=end})
+    state={};durations={};locked=set()
+    for camp in campaigns:
+        for date in dates:
+            for inv in range(48):state[(camp,date,inv)]={'required':0,'before':0,'actual':0}
+    for r in rows:
+        date=str(r['Fecha'])[:10];camp=r['Campaña'];inv=str(r['Intervalo']);i=int(inv[:2])*2+int(inv[3:5])//30
+        if (camp,date,i) not in state:continue
+        state[(camp,date,i)]['required']+=max(0,float(r.get('Agentes_Requeridos') or 0))
+        hours=float(r.get('Lock_Jornada_Horas') if r.get('HC_Bloqueado') else jornada)
+        previous=durations.setdefault((camp,date),hours)
+        if abs(previous-hours)>1e-9:raise ValueError('La selección contiene jornadas distintas para la misma campaña y fecha.')
+        if r.get('HC_Bloqueado'):locked.add((camp,date))
+    overrides={(r['agent_id'],r['work_date']):r for r in overrides}
+    def blocked_minutes(agent,date):
+        return set().union(*(_absence_minutes(a) for a in absences if a['agent_id']==agent and a['start_date']<=date<=a['end_date']))
+    def absent(agent,date):return len(blocked_minutes(agent,date))==1440
+    def has_incident(agent,date):return bool(blocked_minutes(agent,date))
+    def effective(agent,date):
+        override=overrides.get((agent['agentId'],date))
+        return override['schedule'] if override else agent['schedules'].get(daynames[datetime.strptime(date,'%Y-%m-%d').weekday()],'DD-DD')
+    def add(camp,keys,n):
+        for date,inv in keys:
+            if (camp,date,inv) in state:state[(camp,date,inv)]['actual']+=n
+    templates={c:set() for c in campaigns};protected=0
+    prev=(datetime.strptime(start,'%Y-%m-%d')-timedelta(days=1)).strftime('%Y-%m-%d')
+    for a in agents:
+        if a['campaign'] not in campaigns:continue
+        for text in a['schedules'].values():
+            bounds=_schedule_plan_bounds(text)
+            if _schedule_plan_night(bounds):templates[a['campaign']].add(text)
+        for date in [prev]+dates:
+            text=effective(a,date);bounds=_schedule_plan_bounds(text)
+            for key_date,key_inv in _schedule_plan_keys(date,bounds):
+                blocked=blocked_minutes(a['agentId'],key_date)
+                fraction=1-len(blocked&set(range(key_inv*30,key_inv*30+30)))/30
+                add(a['campaign'],{(key_date,key_inv)},fraction)
+            if date in dates and _schedule_plan_night(bounds):protected+=1
+    for cell in state.values():cell['before']=cell['actual']
+    def deficit():return sum(max(0,c['required']-c['actual']) for c in state.values())*.5
+    before=deficit();moves=[];new=[];reasons={};used=set()
+    def score(camp,old,newkeys):
+        improvement=0
+        for key in old|newkeys:
+            cell=state.get((camp,key[0],key[1]));delta=int(key in newkeys)-int(key in old)
+            if not cell or not delta:continue
+            b=cell['actual'];after=b+delta;req=cell['required']
+            if b>=req and after<req:return -1
+            improvement+=max(0,req-b)-max(0,req-after)
+        return improvement
+    if options in ('both','existing'):
+        # Coordinate descent; at most one accepted movement per agent/date.
+        for unused in range(min(limit,300)):
+            best=None
+            for a in agents:
+                camp=a['campaign']
+                if camp not in campaigns:continue
+                for date in dates:
+                    key=(a['agentId'],date)
+                    if key in used:continue
+                    oldtext=effective(a,date);bounds=_schedule_plan_bounds(oldtext)
+                    if not bounds or _schedule_plan_night(bounds) or key in overrides or has_incident(a['agentId'],date):continue
+                    if bounds[0]%30 or bounds[1]%30:
+                        reasons['intervalos']='Se conservan los turnos que no están alineados a intervalos de 30 minutos.';continue
+                    minutes=round(durations.get((camp,date),jornada)*60)
+                    if bounds[1]-bounds[0]!=minutes:
+                        reasons['jornada_distinta']='Los agentes cuya jornada actual difiere de la proyectada se conservan sin ampliar ni reducir su turno.';continue
+                    oldkeys=_schedule_plan_keys(date,bounds)
+                    for delta in (-90,-60,-30,30,60,90):
+                        b=(bounds[0]+delta,bounds[1]+delta)
+                        if b[0]<420 or b[1]>1320:continue
+                        nk=_schedule_plan_keys(date,b);gain=score(camp,oldkeys,nk)
+                        rank=(gain,-abs(delta))
+                        if gain>0 and (best is None or rank>best[0]):best=(rank,a,date,oldtext,b,oldkeys,nk)
+            if best is None:break
+            rank,a,date,oldtext,b,ok,nk=best;add(a['campaign'],ok,-1);add(a['campaign'],nk,1);used.add((a['agentId'],date))
+            moves.append({'agentId':a['agentId'],'fullName':a['fullName'],'campaign':a['campaign'],'date':date,'before':oldtext,'after':_schedule_plan_text(*b),'hours':(b[1]-b[0])/60,'reducedDeficitHours':rank[0]*.5})
+    after_existing=deficit()
+    if options in ('both','new'):
+        for unused in range(min(limit,300)):
+            best=None
+            for camp in campaigns:
+                night=['22:00-07:00']
+                if any(t!='22:00-07:00' for t in templates[camp]):reasons['nocturnos_previos']='Se conservan los nocturnos existentes con otro horario; las nuevas propuestas nocturnas son exclusivamente de 22:00 a 07:00 (9 horas).'
+                for date in dates:
+                    minutes=round(durations.get((camp,date),jornada)*60)
+                    candidates=[_schedule_plan_text(s,s+minutes) for s in range(420,1320-minutes+1,30)]+night
+                    for text in candidates:
+                        b=_schedule_plan_bounds(text);keys=_schedule_plan_keys(date,b);gain=score(camp,set(),keys)
+                        # Prefer lower surplus, then a daytime candidate for equal gain.
+                        surplus=sum(1 for d,i in keys if (camp,d,i) in state and state[(camp,d,i)]['actual']>=state[(camp,d,i)]['required'])
+                        rank=(gain,-surplus,not _schedule_plan_night(b))
+                        if gain>0 and (best is None or rank>best[0]):best=(rank,camp,date,text,keys,b)
+            if best is None:break
+            rank,camp,date,text,keys,b=best;add(camp,keys,1)
+            item=next((x for x in new if (x['campaign'],x['date'],x['schedule'])==(camp,date,text)),None)
+            if item:item['quantity']+=1
+            else:new.append({'campaign':camp,'date':date,'schedule':text,'quantity':1,'hours':(b[1]-b[0])/60,'night':_schedule_plan_night(b)})
+    slots=[{'campaign':c,'date':d,'interval':f'{i//2:02d}:{(i%2)*30:02d}','required':v['required'],'before':v['before'],'afterExisting':v['actual'],'after':v['actual']} for (c,d,i),v in sorted(state.items())]
+    # Preserve the intermediate scenario independently of proposed vacant shifts.
+    actual_existing={(c,d,i):v['before'] for (c,d,i),v in state.items()}
+    for m in moves:
+        for d,i in _schedule_plan_keys(m['date'],_schedule_plan_bounds(m['before'])):
+            if (m['campaign'],d,i) in actual_existing:actual_existing[(m['campaign'],d,i)]-=1
+        for d,i in _schedule_plan_keys(m['date'],_schedule_plan_bounds(m['after'])):
+            if (m['campaign'],d,i) in actual_existing:actual_existing[(m['campaign'],d,i)]+=1
+    for slot in slots:slot['afterExisting']=actual_existing[(slot['campaign'],slot['date'],int(slot['interval'][:2])*2+int(slot['interval'][3:5])//30)]
+    patterns=[]
+    for shift in new:
+        for unit in range(shift['quantity']):
+            week=datetime.strptime(shift['date'],'%Y-%m-%d').isocalendar()[:2]
+            max_days=5 if shift['night'] else 6
+            pattern=next((p for p in patterns if p['campaign']==shift['campaign'] and p['schedule']==shift['schedule'] and shift['date'] not in p['dates'] and sum(datetime.strptime(d,'%Y-%m-%d').isocalendar()[:2]==week for d in p['dates'])<max_days),None)
+            if pattern is None:
+                pattern={'position':f'PROP-{len(patterns)+1:03d}','campaign':shift['campaign'],'schedule':shift['schedule'],'night':shift['night'],'maxDaysPerWeek':max_days,'dates':[]};patterns.append(pattern)
+            pattern['dates'].append(shift['date'])
+    movement_lookup={(m['agentId'],m['date']):m for m in moves}
+    agent_days=[]
+    for agent in agents:
+        if agent['campaign'] not in campaigns:continue
+        for date in dates:
+            current=effective(agent,date);move=movement_lookup.get((agent['agentId'],date))
+            proposed=move['after'] if move else current
+            change='Ajuste de horario' if move else ('Ausencia aprobada' if absent(agent['agentId'],date) else ('Incidencia parcial validada' if has_incident(agent['agentId'],date) else ('Descanso conservado' if not _schedule_plan_bounds(current) else 'Sin cambio')))
+            agent_days.append({'agentId':agent['agentId'],'fullName':agent.get('fullName',''),'supervisor':agent.get('supervisor',''),'campaign':agent['campaign'],'date':date,'before':current,'after':proposed,'change':change,'hasAbsence':has_incident(agent['agentId'],date), 'shiftMinutes':(_schedule_plan_bounds(proposed)[0]-_schedule_plan_bounds(current)[0]) if move else 0})
+    breaks,break_summary=_schedule_plan_breaks([dict(r) for r in agent_days],slots)
+    return {'breakSource':'operational','breaks':breaks,'breakSummary':break_summary,'agentDays':agent_days,'moves':moves,'newPatterns':patterns,'newShifts':new,'slots':slots,'summary':{'deficitHoursBefore':before,'deficitHoursAfterExisting':after_existing,'deficitHoursAfterAll':deficit(),'movements':len(moves),'newShiftDays':sum(n['quantity'] for n in new),'protectedNightDays':protected,'closedCampaignDays':len(locked)},'rules':{'dailyHours':jornada,'dayWindow':'07:00-22:00','maxMoveMinutes':90,'nightTemplates':{c:['22:00-07:00'] for c in campaigns},'nightHours':9,'nightRestDays':2,'dayRestDays':1,'restDaysPreserved':True,'vacationsPreserved':True},'notes':list(reasons.values())+['Los puestos PROP son propuestas sin agente: máximo 6 días por semana diurnos y 5 nocturnos. Las fechas no asignadas son descanso dentro del periodo; antes de asignar personas se revisa su semana completa fuera del periodo seleccionado.','Breaks propuestos de 20 minutos, desde 90 minutos después de entrar y terminando 60 minutos antes de salir, entre 07:00 y 22:00. Se prioriza cobertura, se escalonan las salidas y se busca la mitad del turno. Se permiten empalmes; si hay faltantes, se agenda y marca Requiere apoyo de cobertura. Solo quedan pendientes los turnos que no permiten cumplir la ventana; no representan breaks cancelados. Los breaks y su cobertura usan únicamente horarios operativos vigentes al generar, incluidos cambios por fecha y ausencias aprobadas, sin ajustes propuestos ni puestos vacantes. Aplicar ajustes no registra ni publica los breaks; se descargan como propuesta.']}
+
+
+def _schedule_planner_inputs(payload):
+    if not isinstance(payload,dict):raise ValueError('Selección de horarios no válida.')
+    mode='llamadas'
+    if str(payload.get('channel') or 'llamadas').lower() not in ('llamadas','calls','call'):
+        raise ValueError('Este proyecto utiliza únicamente el canal Llamadas.')
+    start=str(payload.get('start') or '')[:10];end=str(payload.get('end') or '')[:10]
+    try:first=datetime.strptime(start,'%Y-%m-%d');last=datetime.strptime(end,'%Y-%m-%d')
+    except ValueError:raise ValueError('Selecciona fechas válidas.')
+    if start<=_forecast_today_iso() or not 0<=(last-first).days<14:raise ValueError('Selecciona de 1 a 14 días futuros completos.')
+    option=payload.get('options','both')
+    if option not in ('both','existing','new'):raise ValueError('Opción de planeación no válida.')
+    raw=_leer_cache_forecast(mode,allow_stale=True)
+    if not raw:raise ValueError('Primero carga el pronóstico de este canal.')
+    rows=_forecast_apply_control(mode,raw)
+    campaign=str(payload.get('campaign') or '')
+    source=[r for r in rows if start<=str(r.get('Fecha') or '')[:10]<=end and (not campaign or r.get('Campaña')==campaign)]
+    if not source:raise ValueError('No hay requerimiento para esta selección.')
+    if any(r.get('Forecast_Control_Estado')=='closed_missing_snapshot' for r in source):raise ValueError('La selección tiene filas sin snapshot de cierre. Primero revisa el requerimiento cerrado; no se tratarán como necesidad cero.')
+    expected={(first+timedelta(days=i)).strftime('%Y-%m-%d') for i in range((last-first).days+1)}
+    campaigns={r['Campaña'] for r in source}
+    for camp in campaigns:
+        if {str(r['Fecha'])[:10] for r in source if r['Campaña']==camp}!=expected:raise ValueError('Faltan días de forecast para una campaña. Reduce el periodo o actualiza la proyección.')
+    agents=_roster_fetch_agents('Chat' if mode=='chat' else 'Llamadas',False)
+    conn=_roster_conn()
+    try:
+        overrides=[dict(r) for r in conn.execute('SELECT * FROM roster_overrides ORDER BY agent_id,work_date')]
+        absences=[dict(r) for r in conn.execute("SELECT * FROM roster_absences WHERE status='approved' ORDER BY id")]
+    finally:conn.close()
+    hours=float(_forecast_runtime_params(mode).get('jornada',8))
+    for r in source:
+        duration=float(r.get('Lock_Jornada_Horas') if r.get('HC_Bloqueado') else hours)
+        if not .5<=duration<=16 or abs(duration*2-round(duration*2))>1e-9:raise ValueError('La jornada debe estar en intervalos de 30 minutos y entre 0.5 y 16 horas.')
+    inputs={'rows':source,'agents':agents,'overrides':overrides,'absences':absences,'start':start,'end':end,'jornada':hours,'options':option,'limit':100}
+    fingerprint=hashlib.sha256(json.dumps(inputs,sort_keys=True,ensure_ascii=False,default=str).encode()).hexdigest()
+    return inputs,fingerprint
+
+
+@app.route('/api/schedule-planner/catalog',methods=['GET'])
+def schedule_planner_catalog():
+    if str(request.args.get('actorMode') or '').lower()!='wfm':return jsonify({'error':'El módulo de horarios está disponible solo en WFM.'}),403
+    llamadas=sorted({str(r.get('Campaña')) for r in (_leer_cache_forecast('llamadas',allow_stale=True) or []) if r.get('Campaña')})
+    return jsonify({'llamadas':llamadas,'chat':[]}),200
+
+
+@app.route('/api/schedule-planner/preview',methods=['POST'])
+def schedule_planner_preview():
+    try:
+        payload=request.get_json(force=True,silent=False) or {}
+        if str(payload.get('actorMode') or '').lower()!='wfm':return jsonify({'error':'El módulo de horarios está disponible solo en WFM.'}),403
+        inputs,fingerprint=_schedule_planner_inputs(payload)
+        plan=_schedule_plan_engine(**inputs)
+        plan_id=hashlib.sha256((fingerprint+str(time.time_ns())).encode()).hexdigest()[:24]
+        plan.update({'planId':plan_id,'selection':{k:payload.get(k) for k in ('channel','campaign','start','end','options')},'status':'preview','pastProtected':True,'requiredHCProtected':True})
+        conn=_roster_conn()
+        try:
+            conn.execute('INSERT INTO schedule_proposals(plan_id,payload_json,fingerprint,created_at,status) VALUES(?,?,?,?,?)',(plan_id,json.dumps(plan,ensure_ascii=False),fingerprint,datetime.now().isoformat(timespec='seconds'),'preview'))
+            conn.commit()
+        finally:conn.close()
+        _roster_backup_database()
+        return jsonify(plan),200
+    except ValueError as e:return jsonify({'error':str(e)}),400
+    except Exception as e:return jsonify({'error':'No se pudo generar la propuesta: '+str(e)}),500
+
+
+@app.route('/api/schedule-planner/apply',methods=['POST'])
+def schedule_planner_apply():
+    try:
+        payload=request.get_json(force=True,silent=False) or {}
+        if str(payload.get('actorMode') or '').lower()!='wfm':return jsonify({'error':'La aplicación de ajustes corresponde a la vista WFM.'}),403
+        plan_id=str(payload.get('planId') or '')
+        _roster_db_init()
+        with _WFM_ROSTER_LOCK:
+            conn=_roster_conn()
+            try:
+                conn.execute('BEGIN IMMEDIATE')
+                saved=conn.execute('SELECT * FROM schedule_proposals WHERE plan_id=?',(plan_id,)).fetchone()
+                if not saved:raise ValueError('Genera primero una propuesta.')
+                if saved['status']=='applied':raise ValueError('Esta propuesta ya fue aplicada.')
+                plan=json.loads(saved['payload_json']);inputs,fingerprint=_schedule_planner_inputs(plan['selection'])
+                if fingerprint!=saved['fingerprint']:raise ValueError('Cambió el roster, la proyección o sus parámetros. Genera una propuesta nueva antes de aplicar.')
+                if not plan['moves']:raise ValueError('No hay ajustes de agentes actuales para aplicar.')
+                now=datetime.now().isoformat(timespec='seconds')
+                for move in plan['moves']:
+                    # Persist only trusted server-generated future daytime adjustments.
+                    if move['date']<=_forecast_today_iso() or _schedule_plan_night(_schedule_plan_bounds(move['after'])):raise ValueError('La propuesta dejó de cumplir las restricciones.')
+                    conn.execute("""INSERT INTO roster_overrides(agent_id,work_date,schedule,source_action_id,override_type,batch_id,reason,created_at,updated_at,updated_by)
+                        VALUES(?,?,?,?,'planner',?,'Propuesta de cobertura revisada',?,?,'wfm')""",(move['agentId'],move['date'],move['after'],plan_id,plan_id,now,now))
+                    _roster_history_add(conn,move['agentId'],'schedule_plan_applied',{'date':move['date'],'schedule':move['before']},{'date':move['date'],'schedule':move['after']},'Propuesta de cobertura '+plan_id,'wfm')
+                conn.execute("UPDATE schedule_proposals SET status='applied' WHERE plan_id=?",(plan_id,));conn.commit()
+            except Exception:conn.rollback();raise
+            finally:conn.close()
+        _invalidate_roster_dependent_caches()
+        return jsonify({'ok':True,'appliedMoves':len(plan['moves']),'newShiftsApplied':0,'requiredHCProtected':True}),200
+    except (ValueError,sqlite3.IntegrityError) as e:return jsonify({'error':str(e)}),409
+    except Exception as e:return jsonify({'error':'No se aplicó el plan: '+str(e)}),500
 
 @app.route('/api/roster', methods=['GET'])
 def roster_list():

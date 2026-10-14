@@ -3733,6 +3733,7 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 3v6M17 3v6M5 10h14v10H5z"/><path d="M8 14h3M13 14h3M8 17h3"/></svg>
                 <span>Gestión de horarios</span>
             </button>
+            <button type="button" id="btnSchedulePlanner" class="roster-nav-btn" onclick="openSchedulePlanner()" title="Proponer horarios según cobertura"><span>Horarios según necesidad</span></button>
             <span id="tagModoOps" class="hidden ops-badge">Operaciones</span>
         </div>
     </header>
@@ -6578,6 +6579,120 @@
             return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
         }
 
+        let schedulePlannerCatalog={llamadas:[],chat:[]};
+        let schedulePlannerPlan=null;
+        let schedulePlannerChart=null;
+        let operationalBreakChart=null;
+        function invalidateSchedulePlanner(){
+            schedulePlannerPlan=null;document.getElementById('schedulePlannerExport').disabled=true;document.getElementById('schedulePlannerBreakExport').disabled=true;document.getElementById('schedulePlannerResults').classList.add('hidden');
+        }
+        async function openSchedulePlanner(){
+            if(currentMode!=='wfm')return;
+            invalidateSchedulePlanner();
+            document.getElementById('schedulePlannerOverlay').classList.remove('hidden');
+            document.getElementById('schedulePlannerChannel').value='llamadas';
+            const tomorrow=new Date(rosterTodayIso()+'T12:00:00Z');tomorrow.setUTCDate(tomorrow.getUTCDate()+1);
+            const end=new Date(tomorrow);end.setUTCDate(end.getUTCDate()+6);
+            document.getElementById('schedulePlannerStart').value=tomorrow.toISOString().slice(0,10);
+            document.getElementById('schedulePlannerEnd').value=end.toISOString().slice(0,10);
+            document.getElementById('schedulePlannerError').textContent='';
+            try{
+                const response=await fetch('api/schedule-planner/catalog?actorMode=wfm',{cache:'no-store'});const data=await response.json();
+                if(!response.ok)throw new Error(data.error||'No se pudo cargar el catálogo.');
+                schedulePlannerCatalog=data;populateSchedulePlannerCampaigns();
+            }catch(e){document.getElementById('schedulePlannerError').textContent=e.message;}
+        }
+        function closeSchedulePlanner(){document.getElementById('schedulePlannerOverlay').classList.add('hidden');}
+        function populateSchedulePlannerCampaigns(){
+            const mode=document.getElementById('schedulePlannerChannel').value;
+            document.getElementById('schedulePlannerCampaign').innerHTML='<option value="">Todas las campañas del canal</option>'+(schedulePlannerCatalog[mode]||[]).map(c=>`<option value="${rosterSafe(c)}">${rosterSafe(c)}</option>`).join('');
+        }
+        async function generateSchedulePlanner(){
+            if(currentMode!=='wfm')return;
+            const button=document.getElementById('schedulePlannerGenerate');if(button.disabled)return;
+            const payload={actorMode:currentMode,channel:document.getElementById('schedulePlannerChannel').value,campaign:document.getElementById('schedulePlannerCampaign').value,start:document.getElementById('schedulePlannerStart').value,end:document.getElementById('schedulePlannerEnd').value,options:document.getElementById('schedulePlannerOptions').value};
+            button.disabled=true;button.textContent='Calculando…';document.getElementById('schedulePlannerError').textContent='';
+            try{
+                const response=await fetch('api/schedule-planner/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const plan=await response.json();
+                if(!response.ok)throw new Error(plan.error||'No se pudo calcular la propuesta.');
+                if(currentMode!=='wfm')return;
+                schedulePlannerPlan=plan;renderSchedulePlanner();
+            }catch(e){document.getElementById('schedulePlannerError').textContent=e.message;}
+            finally{button.disabled=false;button.textContent='Generar propuesta';}
+        }
+        function renderSchedulePlanner(){
+            const p=schedulePlannerPlan;if(!p)return;document.getElementById('schedulePlannerExport').disabled=false;document.getElementById('schedulePlannerBreakExport').disabled=p.breakSource!=='operational'||p.status==='applied';const n=x=>Number(x||0).toLocaleString('es-MX',{maximumFractionDigits:1});
+            document.getElementById('schedulePlannerResults').classList.remove('hidden');
+            document.getElementById('schedulePlannerScope').textContent=(p.selection.channel==='chat'?'Chat':'Llamadas')+' · '+(p.selection.campaign||'Todas las campañas')+' · '+p.selection.start+' a '+p.selection.end;
+            document.getElementById('schedulePlannerSummary').innerHTML=[['Déficit inicial',n(p.summary.deficitHoursBefore)+' h'],['Tras ajustar actuales',n(p.summary.deficitHoursAfterExisting)+' h'],['Incluyendo turnos nuevos',n(p.summary.deficitHoursAfterAll)+' h'],['Movimientos',p.summary.movements],['Puestos propuestos',p.newPatterns.length],['Nocturnos conservados',p.summary.protectedNightDays+' turnos'],['Breaks propuestos',p.breakSummary?.assigned||0],['Breaks requieren apoyo',p.breakSummary?.requiresSupport||0],['Turnos a revisar',p.breakSummary?.pending||0]].map(([label,value])=>`<div class="roster-kpi"><div class="roster-kpi-label">${rosterSafe(label)}</div><div class="roster-kpi-value">${rosterSafe(value)}</div></div>`).join('');
+            document.getElementById('schedulePlannerRules').textContent='Diurnos 07:00–22:00, 1 día de descanso · nocturnos 22:00–07:00 (9 horas), 2 días de descanso · desplazamiento máximo ±90 min · jornada de la proyección/cierre · descansos y vacaciones conservados · HC requerido cerrado protegido.';
+            document.getElementById('schedulePlannerBreaks').innerHTML=(p.breaks||[]).map(b=>`<tr><td>${rosterSafe(b.fullName)} (${rosterSafe(b.agentId)})</td><td>${rosterSafe(b.supervisor)}</td><td>${rosterSafe(b.campaign)}</td><td>${rosterSafe(b.date)}</td><td>${rosterSafe(b.before)}</td><td>${rosterSafe(b.breakStart&&b.breakEnd?b.breakStart+'–'+b.breakEnd:'Pendiente')}</td><td>${rosterSafe(b.breakStatus)}</td></tr>`).join('')||'<tr><td colspan="7">No hay turnos diurnos elegibles.</td></tr>';
+            document.getElementById('schedulePlannerNotes').innerHTML=p.notes.map(t=>`<p>${rosterSafe(t)}</p>`).join('');
+            document.getElementById('schedulePlannerMoves').innerHTML=p.moves.length?p.moves.map(m=>`<tr><td>${rosterSafe(m.agentId+' · '+m.fullName)}</td><td>${rosterSafe(m.campaign)}</td><td>${rosterSafe(m.date)}</td><td>${rosterSafe(m.before)}</td><td>${rosterSafe(m.after)}</td><td>${n(m.hours)} h</td></tr>`).join(''):'<tr><td colspan="6">No hay movimientos que mejoren la cobertura dentro de las restricciones.</td></tr>';
+            document.getElementById('schedulePlannerNew').innerHTML=p.newPatterns.length?p.newPatterns.map(x=>`<tr><td>${rosterSafe(x.position)}</td><td>${rosterSafe(x.campaign)}</td><td>${rosterSafe(x.schedule)}</td><td>${x.night?'Nocturno 22:00–07:00':'Diurno'}</td><td>${rosterSafe(x.dates.join(', '))}</td><td>${x.maxDaysPerWeek}</td></tr>`).join(''):'<tr><td colspan="6">No se requieren o no se solicitaron turnos nuevos.</td></tr>';
+            const apply=document.getElementById('schedulePlannerApply');apply.disabled=currentMode!=='wfm'||!p.moves.length||p.status==='applied';
+            document.getElementById('schedulePlannerApplyInfo').textContent=currentMode==='wfm'?'Aplicar guarda solo ajustes de agentes actuales para estas fechas. Los puestos nuevos permanecen como propuesta sin agente.':'La propuesta puede revisarse aquí; WFM aplica los ajustes de agentes actuales.';
+            const campaigns=[...new Set(p.slots.map(s=>s.campaign))],dates=[...new Set(p.slots.map(s=>s.date))];
+            document.getElementById('schedulePlannerChartCampaign').innerHTML=campaigns.map(c=>`<option>${rosterSafe(c)}</option>`).join('');
+            document.getElementById('schedulePlannerChartDate').innerHTML=dates.map(d=>`<option>${rosterSafe(d)}</option>`).join('');
+            document.getElementById('schedulePlannerBreakCampaign').innerHTML=campaigns.map(c=>`<option>${rosterSafe(c)}</option>`).join('');document.getElementById('schedulePlannerBreakDate').innerHTML=dates.map(d=>`<option>${rosterSafe(d)}</option>`).join('');renderOperationalBreakChart();renderSchedulePlannerChart();
+        }
+        function renderSchedulePlannerChart(){
+            if(!schedulePlannerPlan)return;const camp=document.getElementById('schedulePlannerChartCampaign').value,date=document.getElementById('schedulePlannerChartDate').value;
+            const slots=schedulePlannerPlan.slots.filter(s=>s.campaign===camp&&s.date===date);
+            if(schedulePlannerChart){schedulePlannerChart.destroy();schedulePlannerChart=null;}
+            if(typeof Chart==='undefined')return;
+            const equal=(a,b)=>slots.every(s=>s[a]===s[b]);
+            const sameAdjust=equal('before','afterExisting'),sameNew=equal('afterExisting','after');
+            document.getElementById('schedulePlannerChartNote').textContent=(sameAdjust?'La cobertura con ajustes coincide con la actual para este día. ':'')+(sameNew?'Los turnos nuevos no agregan cobertura en este día. ':'')+'Haz clic en la leyenda para mostrar u ocultar cada escenario; pasa el cursor por un intervalo para comparar sus valores.';
+            const definitions=[
+                {label:'HC requerido',key:'required',color:'#172554',dash:[9,5],shape:'crossRot',width:3},
+                {label:'Cobertura actual',key:'before',color:'#2563eb',dash:[],shape:'circle',width:3},
+                {label:'Cobertura con ajustes',key:'afterExisting',color:'#15803d',dash:[3,3],shape:'rectRot',width:3,hidden:sameAdjust},
+                {label:'Cobertura con ajustes + puestos nuevos',key:'after',color:'#c2410c',dash:[12,4,2,4],shape:'triangle',width:3,hidden:sameNew}
+            ];
+            schedulePlannerChart=new Chart(document.getElementById('schedulePlannerChart'),{type:'line',data:{labels:slots.map(s=>s.interval),datasets:definitions.map(d=>({label:d.label,data:slots.map(s=>s[d.key]??s.afterExisting),borderColor:d.color,backgroundColor:d.color,borderDash:d.dash,pointStyle:d.shape,pointRadius:3,pointHoverRadius:6,borderWidth:d.width,hidden:!!d.hidden,tension:0,fill:false}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,padding:22,font:{size:13}}},tooltip:{callbacks:{title:items=>camp+' · '+date+' · '+items[0].label,label:ctx=>ctx.dataset.label+': '+Number(ctx.parsed.y).toLocaleString('es-MX')+' agentes',afterBody:items=>{const slot=slots[items[0].dataIndex];return ['Faltante actual: '+Math.max(0,slot.required-slot.before)+' agentes','Faltante con ajustes: '+Math.max(0,slot.required-slot.afterExisting)+' agentes','Faltante con puestos nuevos: '+Math.max(0,slot.required-slot.after)+' agentes'];}}}},scales:{y:{beginAtZero:true,title:{display:true,text:'HC (agentes por intervalo)',font:{size:13}},ticks:{precision:0},grid:{color:'#e2e8f0'}},x:{title:{display:true,text:'Hora del día'},ticks:{maxTicksLimit:16,maxRotation:0},grid:{display:false}}}}});
+        }
+        function renderOperationalBreakChart(){
+            const p=schedulePlannerPlan;if(!p)return;
+            const camp=document.getElementById('schedulePlannerBreakCampaign').value,date=document.getElementById('schedulePlannerBreakDate').value;
+            const slots=p.slots.filter(s=>s.campaign===camp&&s.date===date);
+            if(operationalBreakChart)operationalBreakChart.destroy();
+            if(typeof Chart==='undefined')return;
+            operationalBreakChart=new Chart(document.getElementById('schedulePlannerBreakChart'),{type:'line',data:{labels:slots.map(s=>s.interval),datasets:[['HC requerido','required','#172554',[9,5]],['Cobertura operativa sin breaks','before','#2563eb',[]],['Cobertura operativa con breaks (promedio)','afterBreaks','#a21caf',[4,3]]].map(([label,key,color,dash])=>({label,data:slots.map(s=>s[key]),borderColor:color,backgroundColor:color,borderDash:dash,borderWidth:3,pointRadius:2,fill:false}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom'},tooltip:{callbacks:{afterBody:items=>'HC mínimo durante el intervalo con breaks: '+slots[items[0].dataIndex].minimumAfterBreaks}}},scales:{y:{beginAtZero:true,title:{display:true,text:'HC operativo'},ticks:{precision:0}},x:{ticks:{maxTicksLimit:12}}}}});
+        }
+        function exportOperationalBreaks(){
+            const p=schedulePlannerPlan;if(!p||currentMode!=='wfm')return;
+            if(p.breakSource!=='operational'||p.status==='applied'){document.getElementById('schedulePlannerError').textContent='Genera nuevamente para tomar los horarios vigentes en sistema.';return;}
+            const esc=v=>'"'+String(v??'').replaceAll('"','""')+'"';
+            const rows=[['BREAKS OPERATIVOS — HORARIOS VIGENTES AL GENERAR'],['Canal',p.selection.channel,'Desde',p.selection.start,'Hasta',p.selection.end],['ID agente','Nombre del agente','Supervisor','Campaña','Fecha','Horario operativo en sistema','Inicio break','Fin break','Estado'],...p.breaks.map(b=>[b.agentId,b.fullName,b.supervisor||'Sin supervisor registrado',b.campaign,b.date,b.before,b.breakStart,b.breakEnd,b.breakStatus]),[],['COBERTURA OPERATIVA CON BREAKS'],['Campaña','Fecha','Intervalo','HC requerido','HC operativo sin breaks','HC promedio con breaks','HC mínimo con breaks'],...p.slots.map(s=>[s.campaign,s.date,s.interval,s.required,s.before,s.afterBreaks,s.minimumAfterBreaks])];
+            const url=URL.createObjectURL(new Blob(['\uFEFF'+rows.map(r=>r.map(esc).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='Breaks_Operativos_'+p.selection.channel+'_'+p.selection.start+'_a_'+p.selection.end+'.csv';a.click();URL.revokeObjectURL(url);
+        }
+        async function applySchedulePlanner(){
+            const plan=schedulePlannerPlan,button=document.getElementById('schedulePlannerApply');if(!plan||button.disabled)return;
+            if(!confirm(`Aplicar ${plan.moves.length} ajustes de horarios a agentes actuales para ${plan.selection.start}–${plan.selection.end}?\nLos nuevos puestos quedan como propuesta. El HC requerido cerrado se conserva.`))return;
+            button.disabled=true;document.getElementById('schedulePlannerError').textContent='';
+            try{
+                const response=await fetch('api/schedule-planner/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({planId:plan.planId,actorMode:currentMode})});const data=await response.json();if(!response.ok)throw new Error(data.error||'No se aplicaron los ajustes.');
+                plan.status='applied';renderSchedulePlanner();await loadRosterData();scheduleRosterForecastRefresh();
+                document.getElementById('schedulePlannerError').textContent=`Aplicados ${data.appliedMoves} ajustes. Consulta los cambios por fecha en Gestión de horarios.`;
+            }catch(e){button.disabled=false;document.getElementById('schedulePlannerError').textContent=e.message;}
+        }
+        function exportSchedulePlanner(){
+            const p=schedulePlannerPlan;if(!p||currentMode!=='wfm')return;
+            if(!Array.isArray(p.agentDays)){document.getElementById('schedulePlannerError').textContent='Genera nuevamente la propuesta para descargar nombres, supervisores y horarios de todos los días.';return;}
+            const esc=v=>'"'+String(v??'').replaceAll('"','""')+'"';
+            const rows=[['HORARIOS POR AGENTE Y DÍA'],['Canal',p.selection.channel,'Desde',p.selection.start,'Hasta',p.selection.end,'Estado',p.status==='applied'?'Ajustes aplicados':'Propuesta sin aplicar'],
+                ['ID agente','Nombre del agente','Supervisor','Campaña','Fecha','Horario actual al generar','Horario propuesto','Cambio','Desplazamiento (minutos)'],
+                ...p.agentDays.map(m=>[m.agentId,m.fullName,m.supervisor||'Sin supervisor registrado',m.campaign,m.date,m.before,m.after,m.change,m.shiftMinutes]),
+                [],['PUESTOS NUEVOS SIN AGENTE'],['Puesto','Campaña','Fecha','Horario propuesto','Tipo','Jornada (horas)','Máximo días por semana'],
+                ...p.newPatterns.flatMap(x=>x.dates.map(date=>[x.position,x.campaign,date,x.schedule,x.night?'Nocturno':'Diurno',x.night?9:(Number(x.schedule.slice(6,8))*60+Number(x.schedule.slice(9,11))-Number(x.schedule.slice(0,2))*60-Number(x.schedule.slice(3,5)))/60,x.maxDaysPerWeek])),
+                [],['COBERTURA POR INTERVALO'],['Campaña','Fecha','Intervalo','HC requerido','Actual','Con ajustes','Con ajustes y puestos nuevos'],
+                ...p.slots.map(s=>[s.campaign,s.date,s.interval,s.required,s.before,s.afterExisting,s.after])];
+            const url=URL.createObjectURL(new Blob(['\uFEFF'+rows.map(r=>r.map(esc).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='Horarios_Agentes_'+p.selection.channel+'_'+p.selection.start+'_a_'+p.selection.end+'.csv';a.click();URL.revokeObjectURL(url);
+        }
+
+
         async function openRosterManager() {
             document.getElementById('rosterManagerOverlay')?.classList.remove('hidden');
             document.body.style.overflow = 'hidden';
@@ -9020,6 +9135,30 @@
 
 
     <!-- V6 · GESTIÓN DE HORARIOS -->
+    <div id="schedulePlannerOverlay" class="roster-overlay hidden" role="dialog" aria-modal="true" aria-label="Horarios según necesidad">
+      <div class="roster-shell" style="overflow:auto;max-height:95vh;background:#f7fafc;padding:20px;color:#263d55">
+        <div class="roster-head"><div><div class="roster-title">Horarios según necesidad</div><div class="roster-subtitle">Revisa la cobertura de agentes actuales y los puestos nuevos propuestos.</div></div><button type="button" class="roster-head-btn" onclick="closeSchedulePlanner()">Cerrar ✕</button></div>
+        <div class="roster-form-grid" style="margin-top:16px">
+          <div class="roster-field"><label for="schedulePlannerChannel">Canal</label><select id="schedulePlannerChannel" disabled class="roster-select" onchange="invalidateSchedulePlanner();populateSchedulePlannerCampaigns()"><option value="llamadas">Llamadas</option></select></div>
+          <div class="roster-field"><label for="schedulePlannerCampaign">Campaña</label><select id="schedulePlannerCampaign" onchange="invalidateSchedulePlanner()" class="roster-select"></select></div>
+          <div class="roster-field"><label for="schedulePlannerStart">Desde</label><input id="schedulePlannerStart" onchange="invalidateSchedulePlanner()" class="roster-input" type="date"></div>
+          <div class="roster-field"><label for="schedulePlannerEnd">Hasta (máximo 14 días)</label><input id="schedulePlannerEnd" onchange="invalidateSchedulePlanner()" class="roster-input" type="date"></div>
+          <div class="roster-field"><label for="schedulePlannerOptions">Propuesta</label><select id="schedulePlannerOptions" onchange="invalidateSchedulePlanner()" class="roster-select"><option value="both">Ajustar actuales y generar turnos nuevos</option><option value="existing">Solo ajustar agentes actuales</option><option value="new">Solo generar turnos nuevos</option></select></div>
+          <div class="roster-field"><label>Planeación</label><div style="display:flex;gap:12px;flex-wrap:wrap"><button id="schedulePlannerGenerate" type="button" class="roster-save-btn" onclick="generateSchedulePlanner()">Generar propuesta</button><button id="schedulePlannerExport" type="button" class="roster-save-btn" style="background:#1d4ed8;color:white;border:2px solid #1e40af" onclick="exportSchedulePlanner()" disabled>⇩ Descargar propuesta de horarios</button><button id="schedulePlannerBreakExport" type="button" class="roster-save-btn" style="background:#7e22ce;color:white" onclick="exportOperationalBreaks()" disabled>⇩ Descargar breaks operativos</button></div></div>
+        </div>
+        <p id="schedulePlannerError" role="status" style="color:#b42318"></p>
+        <div id="schedulePlannerResults" class="hidden">
+          <p id="schedulePlannerScope" style="font-weight:bold"></p><p id="schedulePlannerRules"></p><div id="schedulePlannerSummary" class="roster-kpis"></div>
+          <div style="display:flex;gap:12px;margin:16px 0"><select id="schedulePlannerChartCampaign" class="roster-select" aria-label="Campaña de cobertura" onchange="renderSchedulePlannerChart()"></select><select id="schedulePlannerChartDate" class="roster-select" aria-label="Fecha de cobertura" onchange="renderSchedulePlannerChart()"></select></div>
+          <div style="background:white;border:1px solid #cbd5e1;border-radius:14px;padding:18px"><h3 style="font-weight:bold;margin-bottom:8px">Cobertura frente al HC requerido</h3><div style="height:400px"><canvas id="schedulePlannerChart"></canvas></div><p id="schedulePlannerChartNote" style="font-size:13px;color:#475569;margin-top:12px"></p></div>
+          <h3 style="margin:20px 0 10px;font-weight:bold">Ajustes de agentes actuales</h3><div style="overflow:auto"><table class="roster-table"><thead><tr><th>Agente</th><th>Campaña</th><th>Fecha</th><th>Actual</th><th>Propuesto</th><th>Jornada</th></tr></thead><tbody id="schedulePlannerMoves"></tbody></table></div>
+          <h3 style="margin:20px 0 10px;font-weight:bold">Puestos nuevos sin asignar</h3><div style="overflow:auto"><table class="roster-table"><thead><tr><th>Puesto propuesto</th><th>Campaña</th><th>Turno</th><th>Tipo</th><th>Fechas de trabajo</th><th>Máx. días/semana</th></tr></thead><tbody id="schedulePlannerNew"></tbody></table></div>
+          <p id="schedulePlannerApplyInfo"></p>
+          <div style="display:flex;gap:12px"><button type="button" class="roster-save-btn" style="background:#1d4ed8;color:white" onclick="exportSchedulePlanner()">⇩ Descargar propuesta de horarios</button><button id="schedulePlannerApply" type="button" class="roster-save-btn" onclick="applySchedulePlanner()">Aplicar ajustes revisados</button></div><section style="margin-top:24px;padding:20px;border:2px solid #a855f7;border-radius:14px;background:#faf5ff"><h3 style="margin:20px 0 10px;font-weight:bold">Breaks operativos · 20 minutos</h3><p style="font-weight:bold;color:#6b21a8">Horario vigente en Gestión de horarios al generar. No usa los horarios propuestos. Si aplicas ajustes o cambia el roster, genera nuevamente los breaks.</p><div style="display:flex;gap:12px;margin:16px 0"><select id="schedulePlannerBreakCampaign" class="roster-select" aria-label="Campaña breaks" onchange="renderOperationalBreakChart()"></select><select id="schedulePlannerBreakDate" class="roster-select" aria-label="Fecha breaks" onchange="renderOperationalBreakChart()"></select></div><div style="height:350px;background:white"><canvas id="schedulePlannerBreakChart"></canvas></div><p>Desde 90 minutos después de entrar, terminando al menos 1 hora antes de salir, entre 07:00 y 22:00. Se escalonan según cobertura; si falta personal, el break se agenda y marca «Requiere apoyo». Descargar no aplica los breaks.</p><div style="overflow:auto"><table class="roster-table"><thead><tr><th>Agente</th><th>Supervisor</th><th>Campaña</th><th>Fecha</th><th>Horario operativo en sistema</th><th>Break</th><th>Estado</th></tr></thead><tbody id="schedulePlannerBreaks"></tbody></table></div></section><div id="schedulePlannerNotes" style="margin:16px 0"></div>
+        </div>
+      </div>
+    </div>
+
     <div id="rosterManagerOverlay" class="roster-overlay hidden" role="dialog" aria-modal="true" aria-label="Gestión de horarios">
         <div id="rosterManagerShell" class="roster-shell">
             <div class="roster-head">
